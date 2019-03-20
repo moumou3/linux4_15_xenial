@@ -202,6 +202,9 @@ struct rmap_item {
 #define KSM_FLAG_MASK	(SEQNR_MASK|UNSTABLE_FLAG|STABLE_FLAG)
 				/* to mask all the flags */
 
+/*ugpud mm */
+static struct mm_struct ugpud_mm;
+
 /* The stable and unstable tree heads */
 static struct rb_root one_stable_tree[1] = { RB_ROOT };
 static struct rb_root one_unstable_tree[1] = { RB_ROOT };
@@ -2439,6 +2442,10 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 
 		*vm_flags &= ~VM_MERGEABLE;
 		break;
+	case MADV_UGPUD:
+	        ugpud_mm = *mm;
+	        break;
+
 	}
 
 	return 0;
