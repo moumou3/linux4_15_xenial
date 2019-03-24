@@ -203,7 +203,7 @@ struct rmap_item {
 				/* to mask all the flags */
 
 /*ugpud mm */
-static struct mm_struct ugpud_mm;
+static struct vm_area_struct *ugpud_vma;
 
 /* The stable and unstable tree heads */
 static struct rb_root one_stable_tree[1] = { RB_ROOT };
@@ -2404,6 +2404,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 		unsigned long end, int advice, unsigned long *vm_flags)
 {
 	struct mm_struct *mm = vma->vm_mm;
+	unsigned char test_flag = 0x3;
 	int err;
 
 	switch (advice) {
@@ -2442,9 +2443,14 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 
 		*vm_flags &= ~VM_MERGEABLE;
 		break;
-	case MADV_UGPUD:
-	        ugpud_mm = *mm;
+	case MADV_UGPUD_SVM:
+	        ugpud_vma = vma;
 	        break;
+	case MADV_UGPUD_FLAG:
+	        ugpud_vma = vma;
+
+                remap_pfn_range(vma, start, virt_to_phys((void*)&test_flag) >> PAGE_SHIFT, 1, vma->vm_page_prot)
+
 
 	}
 
