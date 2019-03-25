@@ -2449,7 +2449,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 	case MADV_UGPUD_FLAG:
 	        ugpud_vma = vma;
 
-                remap_pfn_range(vma, start, virt_to_phys((void*)&test_flag) >> PAGE_SHIFT, 1, vma->vm_page_prot)
+                remap_pfn_range(vma, start, virt_to_phys((void*)&test_flag) >> PAGE_SHIFT, 1, vma->vm_page_prot);
 
 
 	}
