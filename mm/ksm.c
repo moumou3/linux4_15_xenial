@@ -42,6 +42,7 @@
 
 #include <asm/tlbflush.h>
 #include "internal.h"
+#include "mytrace.h"
 
 #ifdef CONFIG_NUMA
 #define NUMA(x)		(x)
@@ -2448,10 +2449,8 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 	        break;
 	case MADV_UGPUD_FLAG:
 	        ugpud_vma = vma;
-                MY_PRINT_DEBUG(0,0,0);
 
                 err = remap_pfn_range(vma, start, virt_to_phys((void*)&test_flag) >> PAGE_SHIFT, 1, vma->vm_page_prot);
-                MY_PRINT_DEBUG(err,0,0);
 
 
 	}

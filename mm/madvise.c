@@ -24,7 +24,7 @@
 #include <linux/swapops.h>
 #include <linux/shmem_fs.h>
 #include <linux/mmu_notifier.h>
-#include <mytrace.h>
+#include "mytrace.h"
 
 #include <asm/tlb.h>
 
@@ -62,7 +62,6 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 	unsigned long new_flags = vma->vm_flags;
 
-        MY_PRINT_DEBUG(0,0,0);
 	switch (behavior) {
 	case MADV_NORMAL:
 		new_flags = new_flags & ~VM_RAND_READ & ~VM_SEQ_READ;
@@ -108,7 +107,6 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	case MADV_UNMERGEABLE:
 	case MADV_UGPUD_SVM:
 	case MADV_UGPUD_FLAG:
-                MY_PRINT_DEBUG(0,0,0);
 		error = ksm_madvise(vma, start, end, behavior, &new_flags);
 		if (error) {
 			/*
@@ -805,39 +803,31 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	size_t len;
 	struct blk_plug plug;
 
-        MY_PRINT_DEBUG(0,0,0);
 	if (!madvise_behavior_valid(behavior))
 		return error;
 
-        MY_PRINT_DEBUG(0,0,0);
 	if (start & ~PAGE_MASK)
 		return error;
 	len = (len_in + ~PAGE_MASK) & PAGE_MASK;
-        MY_PRINT_DEBUG(0,0,0);
 
 	/* Check to see whether len was rounded up from small -ve to zero */
 	if (len_in && !len)
 		return error;
-        MY_PRINT_DEBUG(0,0,0);
 
 	end = start + len;
 	if (end < start)
 		return error;
-        MY_PRINT_DEBUG(0,0,0);
 
 	error = 0;
 	if (end == start)
 		return error;
-        MY_PRINT_DEBUG(0,0,0);
 
 #ifdef CONFIG_MEMORY_FAILURE
 	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE)
 		return madvise_inject_error(behavior, start, start + len_in);
 #endif
-        MY_PRINT_DEBUG(0,0,0);
 
 	write = madvise_need_mmap_write(behavior);
-        MY_PRINT_DEBUG(0,0,0);
 	if (write) {
 		if (down_write_killable(&current->mm->mmap_sem))
 			return -EINTR;
@@ -845,7 +835,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		down_read(&current->mm->mmap_sem);
 	}
 
-        MY_PRINT_DEBUG(0,0,0);
 	/*
 	 * If the interval [start,end) covers some unmapped address
 	 * ranges, just ignore them, but return -ENOMEM at the end.
@@ -876,7 +865,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 			tmp = end;
 
 		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
-                MY_PRINT_DEBUG(behavior,0,0);
 		error = madvise_vma(vma, &prev, start, tmp, behavior);
 		if (error)
 			goto out;
@@ -891,7 +879,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		else	/* madvise_remove dropped mmap_sem */
 			vma = find_vma(current->mm, start);
 	}
-        MY_PRINT_DEBUG(0,0,0);
 out:
 	blk_finish_plug(&plug);
 	if (write)
