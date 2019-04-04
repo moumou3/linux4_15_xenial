@@ -39,6 +39,7 @@
 #include <linux/freezer.h>
 #include <linux/oom.h>
 #include <linux/numa.h>
+#include <linux/sched.h>
 
 #include <asm/tlbflush.h>
 #include "internal.h"
@@ -203,8 +204,12 @@ struct rmap_item {
 #define KSM_FLAG_MASK	(SEQNR_MASK|UNSTABLE_FLAG|STABLE_FLAG)
 				/* to mask all the flags */
 
+#define GPU_LAUNCH 0x1
+#define GPU_CALCEND 0x2
+
 /*ugpud mm */
 static struct vm_area_struct *ugpud_vma;
+static unsigned char *ugpud_flag = NULL;
 
 /* The stable and unstable tree heads */
 static struct rb_root one_stable_tree[1] = { RB_ROOT };
@@ -2357,6 +2362,14 @@ static void ksm_do_scan(unsigned int scan_npages)
 	struct rmap_item *rmap_item;
 	struct page *uninitialized_var(page);
 
+        if (!ugpud_flag)
+          return;
+
+        *ugpud_flag = GPU_LAUNCH;
+        while(*ugpud_flag != GPU_CALCEND) {
+          yield();
+        }
+        printk(KERN_DEBUG "calc end");
 	while (scan_npages-- && likely(!freezing(current))) {
 		cond_resched();
 		rmap_item = scan_get_next_rmap_item(&page);
@@ -2405,8 +2418,9 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 		unsigned long end, int advice, unsigned long *vm_flags)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	unsigned char test_flag = 0x3;
 	int err;
+	void *kmalloc_ptr;
+	unsigned char *kmalloc_area;
 
 	switch (advice) {
 	case MADV_MERGEABLE:
@@ -2448,9 +2462,16 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 	        ugpud_vma = vma;
 	        break;
 	case MADV_UGPUD_FLAG:
-	        ugpud_vma = vma;
-
-                err = remap_pfn_range(vma, start, virt_to_phys((void*)&test_flag) >> PAGE_SHIFT, 1, vma->vm_page_prot);
+	        if ((kmalloc_ptr = kmalloc(2*PAGE_SIZE, GFP_KERNEL)) == NULL) {
+	          MY_PRINT_DEBUG(0,0,0);
+	        }
+	        kmalloc_area = (char*)((((unsigned long)kmalloc_ptr) + PAGE_SIZE - 1) & PAGE_MASK);
+	        for (i = 0; i < 1 * PAGE_SIZE; i+= PAGE_SIZE) {
+                  SetPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));
+                }
+                ugpud_flag = &kmalloc_area[0];
+                *ugpud_flag = 0x0;
+                err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, PAGE_SIZE, vma->vm_page_prot);
 
 
 	}
