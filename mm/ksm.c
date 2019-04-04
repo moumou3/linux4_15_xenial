@@ -2369,7 +2369,7 @@ static void ksm_do_scan(unsigned int scan_npages)
         while(*ugpud_flag != GPU_CALCEND) {
           yield();
         }
-        printk(KERN_DEBUG "calc end");
+        printk(KERN_DEBUG "calc end\n");
 	while (scan_npages-- && likely(!freezing(current))) {
 		cond_resched();
 		rmap_item = scan_get_next_rmap_item(&page);
@@ -2421,6 +2421,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 	int err;
 	void *kmalloc_ptr;
 	unsigned char *kmalloc_area;
+	int i;
 
 	switch (advice) {
 	case MADV_MERGEABLE:
