@@ -49,47 +49,47 @@
 #define KSM_FLAG_MASK	(SEQNR_MASK|UNSTABLE_FLAG|STABLE_FLAG)
 
 /*
- *  * A few notes about the KSM scanning process,
- *   * to make it easier to understand the data structures below:
- *    *
- *     * In order to reduce excessive scanning, KSM sorts the memory pages by their
- *      * contents into a data structure that holds pointers to the pages' locations.
- *       *
- *        * Since the contents of the pages may change at any moment, KSM cannot just
- *         * insert the pages into a normal sorted tree and expect it to find anything.
- *          * Therefore KSM uses two data structures - the stable and the unstable tree.
- *           *
- *            * The stable tree holds pointers to all the merged pages (ksm pages), sorted
- *             * by their contents.  Because each such page is write-protected, searching on
- *              * this tree is fully assured to be working (except when pages are unmapped),
- *               * and therefore this tree is called the stable tree.
- *                *
- *                 * In addition to the stable tree, KSM uses a second data structure called the
- *                  * unstable tree: this tree holds pointers to pages which have been found to
- *                   * be "unchanged for a period of time".  The unstable tree sorts these pages
- *                    * by their contents, but since they are not write-protected, KSM cannot rely
- *                     * upon the unstable tree to work correctly - the unstable tree is liable to
- *                      * be corrupted as its contents are modified, and so it is called unstable.
- *                       *
- *                        * KSM solves this problem by several techniques:
- *                         *
- *                          * 1) The unstable tree is flushed every time KSM completes scanning all
- *                           *    memory areas, and then the tree is rebuilt again from the beginning.
- *                            * 2) KSM will only insert into the unstable tree, pages whose hash value
- *                             *    has not changed since the previous scan of all memory areas.
- *                              * 3) The unstable tree is a RedBlack Tree - so its balancing is based on the
- *                               *    colors of the nodes and not on their contents, assuring that even when
- *                                *    the tree gets "corrupted" it won't get out of balance, so scanning time
- *                                 *    remains the same (also, searching and inserting nodes in an rbtree uses
- *                                  *    the same algorithm, so we have no overhead when we flush and rebuild).
- *                                   * 4) KSM never flushes the stable tree, which means that even if it were to
- *                                    *    take 10 attempts to find a page in the unstable tree, once it is found,
- *                                     *    it is secured in the stable tree.  (When we scan a new page, we first
- *                                      *    compare it against the stable tree, and then against the unstable tree.)
- *                                       *
- *                                        * If the merge_across_nodes tunable is unset, then KSM maintains multiple
- *                                         * stable trees and multiple unstable trees: one of each for each NUMA node.
- *                                          */
+ ** A few notes about the KSM scanning process,
+ ** to make it easier to understand the data structures below:
+ **
+ ** In order to reduce excessive scanning, KSM sorts the memory pages by their
+ ** contents into a data structure that holds pointers to the pages' locations.
+ **
+ ** Since the contents of the pages may change at any moment, KSM cannot just
+ ** insert the pages into a normal sorted tree and expect it to find anything.
+ ** Therefore KSM uses two data structures - the stable and the unstable tree.
+ **
+ ** The stable tree holds pointers to all the merged pages (ksm pages), sorted
+ ** by their contents.  Because each such page is write-protected, searching on
+ ** this tree is fully assured to be working (except when pages are unmapped),
+ ** and therefore this tree is called the stable tree.
+ **
+ ** In addition to the stable tree, KSM uses a second data structure called the
+ ** unstable tree: this tree holds pointers to pages which have been found to
+ ** be "unchanged for a period of time".  The unstable tree sorts these pages
+ ** by their contents, but since they are not write-protected, KSM cannot rely
+ ** upon the unstable tree to work correctly - the unstable tree is liable to
+ ** be corrupted as its contents are modified, and so it is called unstable.
+ **
+ ** KSM solves this problem by several techniques:
+ **
+ ** 1) The unstable tree is flushed every time KSM completes scanning all
+ **    memory areas, and then the tree is rebuilt again from the beginning.
+ ** 2) KSM will only insert into the unstable tree, pages whose hash value
+ **    has not changed since the previous scan of all memory areas.
+ ** 3) The unstable tree is a RedBlack Tree - so its balancing is based on the
+ **    colors of the nodes and not on their contents, assuring that even when
+ **    the tree gets "corrupted" it won't get out of balance, so scanning time
+ **    remains the same (also, searching and inserting nodes in an rbtree uses
+ **    the same algorithm, so we have no overhead when we flush and rebuild).
+ ** 4) KSM never flushes the stable tree, which means that even if it were to
+ **    take 10 attempts to find a page in the unstable tree, once it is found,
+ **    it is secured in the stable tree.  (When we scan a new page, we first
+ **    compare it against the stable tree, and then against the unstable tree.)
+ **
+ ** If the merge_across_nodes tunable is unset, then KSM maintains multiple
+ ** stable trees and multiple unstable trees: one of each for each NUMA node.
+ **/
 
 /**
  *  * struct mm_slot - ksm information per mm that is being scanned
@@ -363,32 +363,32 @@ static int break_ksm(struct vm_area_struct *vma, unsigned long addr)
   } while (!(ret & (VM_FAULT_WRITE | VM_FAULT_SIGBUS | VM_FAULT_SIGSEGV | VM_FAULT_OOM)));
   /*
    *      * We must loop because handle_mm_fault() may back out if there's
-   *           * any difficulty e.g. if pte accessed bit gets updated concurrently.
-   *                *
-   *                     * VM_FAULT_WRITE is what we have been hoping for: it indicates that
-   *                          * COW has been broken, even if the vma does not permit VM_WRITE;
-   *                               * but note that a concurrent fault might break PageKsm for us.
-   *                                    *
-   *                                         * VM_FAULT_SIGBUS could occur if we race with truncation of the
-   *                                              * backing file, which also invalidates anonymous pages: that's
-   *                                                   * okay, that truncation will have unmapped the PageKsm for us.
-   *                                                        *
-   *                                                             * VM_FAULT_OOM: at the time of writing (late July 2009), setting
-   *                                                                  * aside mem_cgroup limits, VM_FAULT_OOM would only be set if the
-   *                                                                       * current task has TIF_MEMDIE set, and will be OOM killed on return
-   *                                                                            * to user; and ksmd, having no mm, would never be chosen for that.
-   *                                                                                 *
-   *                                                                                      * But if the mm is in a limited mem_cgroup, then the fault may fail
-   *                                                                                           * with VM_FAULT_OOM even if the current task is not TIF_MEMDIE; and
-   *                                                                                                * even ksmd can fail in this way - though it's usually breaking ksm
-   *                                                                                                     * just to undo a merge it made a moment before, so unlikely to oom.
-   *                                                                                                          *
-   *                                                                                                               * That's a pity: we might therefore have more kernel pages allocated
-   *                                                                                                                    * than we're counting as nodes in the stable tree; but ksm_do_scan
-   *                                                                                                                         * will retry to break_cow on each pass, so should recover the page
-   *                                                                                                                              * in due course.  The important thing is to not let VM_MERGEABLE
-   *                                                                                                                                   * be cleared while any such pages might remain in the area.
-   *                                                                                                                                        */
+   ** any difficulty e.g. if pte accessed bit gets updated concurrently.
+   **
+   ** VM_FAULT_WRITE is what we have been hoping for: it indicates that
+   ** COW has been broken, even if the vma does not permit VM_WRITE;
+   ** but note that a concurrent fault might break PageKsm for us.
+   **
+   ** VM_FAULT_SIGBUS could occur if we race with truncation of the
+   ** backing file, which also invalidates anonymous pages: that's
+   ** okay, that truncation will have unmapped the PageKsm for us.
+   **
+   ** VM_FAULT_OOM: at the time of writing (late July 2009), setting
+   ** aside mem_cgroup limits, VM_FAULT_OOM would only be set if the
+   ** current task has TIF_MEMDIE set, and will be OOM killed on return
+   ** to user; and ksmd, having no mm, would never be chosen for that.
+   **
+   ** But if the mm is in a limited mem_cgroup, then the fault may fail
+   ** with VM_FAULT_OOM even if the current task is not TIF_MEMDIE; and
+   ** even ksmd can fail in this way - though it's usually breaking ksm
+   ** just to undo a merge it made a moment before, so unlikely to oom.
+   **
+   ** That's a pity: we might therefore have more kernel pages allocated
+   ** than we're counting as nodes in the stable tree; but ksm_do_scan
+   ** will retry to break_cow on each pass, so should recover the page
+   ** in due course.  The important thing is to not let VM_MERGEABLE
+   ** be cleared while any such pages might remain in the area.
+   **/
   return (ret & VM_FAULT_OOM) ? -ENOMEM : 0;
 }
 
