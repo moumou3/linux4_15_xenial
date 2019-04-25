@@ -43,13 +43,8 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
-#ifdef CONFIG_NUMA
-#define NUMA(x)        (x)
-#define DO_NUMA(x)    do { (x); } while (0)
-#else
 #define NUMA(x)        (0)
 #define DO_NUMA(x)    do { } while (0)
-#endif
 
 #define KSM_FLAG_MASK	(SEQNR_MASK|UNSTABLE_FLAG|STABLE_FLAG)
 
@@ -133,7 +128,6 @@ struct ksm_scan {
  *     * @list: linked into migrate_nodes, pending placement in the proper node tree
  *      * @hlist: hlist head of rmap_items using this ksm page
  *       * @kpfn: page frame number of this ksm page (perhaps temporarily on wrong nid)
- *        * @nid: NUMA node id of stable tree in which linked (may not match kpfn)
  *         */
 struct stable_node {
   union {
@@ -145,16 +139,12 @@ struct stable_node {
   };
   struct hlist_head hlist;
   unsigned long kpfn;
-#ifdef CONFIG_NUMA
-  int nid;
-#endif
 };
 
 /**
  *  * struct rmap_item - reverse mapping item for virtual addresses
  *   * @rmap_list: next rmap_item in mm_slot's singly-linked rmap_list
  *    * @anon_vma: pointer to anon_vma for this mm,address, when in stable tree
- *     * @nid: NUMA node id of unstable tree in which linked (may not match page)
  *      * @mm: the memory structure this rmap_item is pointing into
  *       * @address: the virtual address this rmap_item tracks (+ flags in low bits)
  *        * @oldchecksum: previous checksum of the page at that virtual address
@@ -166,9 +156,6 @@ struct rmap_item {
   struct rmap_item *rmap_list;
   union {
     struct anon_vma *anon_vma;    /* when stable */
-#ifdef CONFIG_NUMA
-    int nid;        /* when node of unstable tree */
-#endif
   };
   struct mm_struct *mm;
   unsigned long address;        /* + low bits used for flags below */
@@ -227,14 +214,7 @@ static unsigned int ksm_thread_pages_to_scan = 100;
 /* Milliseconds ksmd should sleep between batches */
 static unsigned int ksm_thread_sleep_millisecs = 20;
 
-#ifdef CONFIG_NUMA
-/* Zeroed when merging across nodes is not allowed */
-static unsigned int ksm_merge_across_nodes = 1;
-static int ksm_nr_node_ids = 1;
-#else
-#define ksm_merge_across_nodes    1U
 #define ksm_nr_node_ids        1
-#endif
 
 #define KSM_RUN_STOP    0
 #define KSM_RUN_MERGE    1
@@ -493,7 +473,7 @@ out:        page = NULL;
  *      */
 static inline int get_kpfn_nid(unsigned long kpfn)
 {
-  return ksm_merge_across_nodes ? 0 : NUMA(pfn_to_nid(kpfn));
+  return 0;
 }
 
 static void remove_node_from_stable_tree(struct stable_node *stable_node)
@@ -514,7 +494,7 @@ static void remove_node_from_stable_tree(struct stable_node *stable_node)
     list_del(&stable_node->list);
   else
     rb_erase(&stable_node->node,
-             root_stable_tree + NUMA(stable_node->nid));
+             root_stable_tree);
   free_stable_node(stable_node);
 }
 
@@ -650,7 +630,7 @@ static void remove_rmap_item_from_tree(struct rmap_item *rmap_item)
     BUG_ON(age > 1);
     if (!age)
       rb_erase(&rmap_item->node,
-               root_unstable_tree + NUMA(rmap_item->nid));
+               root_unstable_tree);
     ksm_pages_unshared--;
     rmap_item->address &= PAGE_MASK;
   }
@@ -1222,11 +1202,6 @@ again:
       tree_page = get_ksm_page(stable_node, true);
       if (tree_page) {
         unlock_page(tree_page);
-        if (get_kpfn_nid(stable_node->kpfn) !=
-            NUMA(stable_node->nid)) {
-          put_page(tree_page);
-          goto replace;
-        }
         return tree_page;
       }
       /*
@@ -1243,7 +1218,6 @@ again:
     return NULL;
 
   list_del(&page_node->list);
-  DO_NUMA(page_node->nid = nid);
   rb_link_node(&page_node->node, parent, new);
   rb_insert_color(&page_node->node, root);
   get_page(page);
@@ -1252,7 +1226,6 @@ again:
 replace:
   if (page_node) {
     list_del(&page_node->list);
-    DO_NUMA(page_node->nid = nid);
     rb_replace_node(&stable_node->node, &page_node->node, root);
     get_page(page);
   } else {
@@ -1320,7 +1293,6 @@ static struct stable_node *stable_tree_insert(struct page *kpage)
   INIT_HLIST_HEAD(&stable_node->hlist);
   stable_node->kpfn = kpfn;
   set_page_stable_node(kpage, stable_node);
-  DO_NUMA(stable_node->nid = nid);
   rb_link_node(&stable_node->node, parent, new);
   rb_insert_color(&stable_node->node, root);
 
@@ -1383,15 +1355,6 @@ struct rmap_item *unstable_tree_search_insert(struct rmap_item *rmap_item,
     } else if (ret > 0) {
       put_page(tree_page);
       new = &parent->rb_right;
-    } else if (!ksm_merge_across_nodes &&
-               page_to_nid(tree_page) != nid) {
-      /*
-       *              * If tree_page has been migrated to another NUMA node,
-       *                           * it will be flushed out and put in the right unstable
-       *                                        * tree next time: only merge with it when across_nodes.
-       *                                                     */
-      put_page(tree_page);
-      return NULL;
     } else {
       *tree_pagep = tree_page;
       return tree_rmap_item;
@@ -1400,7 +1363,6 @@ struct rmap_item *unstable_tree_search_insert(struct rmap_item *rmap_item,
 
   rmap_item->address |= UNSTABLE_FLAG;
   rmap_item->address |= (ksm_scan.seqnr & SEQNR_MASK);
-  DO_NUMA(rmap_item->nid = nid);
   rb_link_node(&rmap_item->node, parent, new);
   rb_insert_color(&rmap_item->node, root);
 
@@ -1447,13 +1409,6 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
 
   stable_node = page_stable_node(page);
   if (stable_node) {
-    if (stable_node->head != &migrate_nodes &&
-        get_kpfn_nid(stable_node->kpfn) != NUMA(stable_node->nid)) {
-      rb_erase(&stable_node->node,
-               root_stable_tree + NUMA(stable_node->nid));
-      stable_node->head = &migrate_nodes;
-      list_add(&stable_node->list, stable_node->head);
-    }
     if (stable_node->head != &migrate_nodes &&
         rmap_item->head == stable_node)
       return;
@@ -1587,20 +1542,6 @@ static struct rmap_item *scan_get_next_rmap_item(struct page **page)
      *                            * those moved out to the migrate_nodes list can accumulate:
      *                                     * so prune them once before each full scan.
      *                                              */
-    if (!ksm_merge_across_nodes) {
-      struct stable_node *stable_node;
-      struct list_head *this, *next;
-      struct page *page;
-
-      list_for_each_safe(this, next, &migrate_nodes) {
-        stable_node = list_entry(this,
-                                 struct stable_node, list);
-        page = get_ksm_page(stable_node, false);
-        if (page)
-          put_page(page);
-        cond_resched();
-      }
-    }
 
     for (nid = 0; nid < ksm_nr_node_ids; nid++)
       root_unstable_tree[nid] = RB_ROOT;
@@ -2202,63 +2143,6 @@ static ssize_t run_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 KSM_ATTR(run);
 
-#ifdef CONFIG_NUMA
-static ssize_t merge_across_nodes_show(struct kobject *kobj,
-                                       struct kobj_attribute *attr, char *buf)
-{
-  return sprintf(buf, "%u\n", ksm_merge_across_nodes);
-}
-
-static ssize_t merge_across_nodes_store(struct kobject *kobj,
-                                        struct kobj_attribute *attr,
-                                        const char *buf, size_t count)
-{
-  int err;
-  unsigned long knob;
-
-  err = kstrtoul(buf, 10, &knob);
-  if (err)
-    return err;
-  if (knob > 1)
-    return -EINVAL;
-
-  mutex_lock(&ksm_thread_mutex);
-  wait_while_offlining();
-  if (ksm_merge_across_nodes != knob) {
-    if (ksm_pages_shared || remove_all_stable_nodes())
-      err = -EBUSY;
-    else if (root_stable_tree == one_stable_tree) {
-      struct rb_root *buf;
-      /*
-       *              * This is the first time that we switch away from the
-       *                           * default of merging across nodes: must now allocate
-       *                                        * a buffer to hold as many roots as may be needed.
-       *                                                     * Allocate stable and unstable together:
-       *                                                                  * MAXSMP NODES_SHIFT 10 will use 16kB.
-       *                                                                               */
-      buf = kcalloc(nr_node_ids + nr_node_ids, sizeof(*buf),
-                    GFP_KERNEL);
-      /* Let us assume that RB_ROOT is NULL is zero */
-      if (!buf)
-        err = -ENOMEM;
-      else {
-        root_stable_tree = buf;
-        root_unstable_tree = buf + nr_node_ids;
-        /* Stable tree is empty but not the unstable */
-        root_unstable_tree[0] = one_unstable_tree[0];
-      }
-    }
-    if (!err) {
-      ksm_merge_across_nodes = knob;
-      ksm_nr_node_ids = knob ? 1 : nr_node_ids;
-    }
-  }
-  mutex_unlock(&ksm_thread_mutex);
-
-  return err ? err : count;
-}
-KSM_ATTR(merge_across_nodes);
-#endif
 
 static ssize_t pages_shared_show(struct kobject *kobj,
                                  struct kobj_attribute *attr, char *buf)
@@ -2314,9 +2198,6 @@ static struct attribute *ksm_attrs[] = {
   &pages_unshared_attr.attr,
   &pages_volatile_attr.attr,
   &full_scans_attr.attr,
-#ifdef CONFIG_NUMA
-  &merge_across_nodes_attr.attr,
-#endif
   NULL,
 };
 
