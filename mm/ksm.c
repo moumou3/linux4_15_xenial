@@ -1423,6 +1423,7 @@ struct hash_node* hash_tree_search_insert(char *hash) {
     } else if (ret > 0) {
       new = &parent->rb_right;
     } else {
+      kfree(hash);
       return  tree_hash_node;
     }
   }
@@ -1709,6 +1710,15 @@ next_mm:
   return NULL;
 }
 
+static char* get_under20bit(struct page *page)
+{
+  char *hash = kmalloc(SHA1_BLOCK_SIZE, GFP_KERNEL);
+  void *addr = kmap_atomic(page);
+  memcpy(hash, addr + PAGE_SIZE - SHA1_BLOCK_SIZE, SHA1_BLOCK_SIZE);
+  kunmap_atomic(addr);
+  return hash;
+}
+
 /**
  ** ksm_do_scan  - the ksm scanner main worker function.
  ** @scan_npages - number of pages we want to scan before we return.
@@ -1717,13 +1727,14 @@ static void ksm_do_scan(unsigned int scan_npages)
 {
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
-  char testhash[20] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x7, 0x8, 0x9,0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10, 0x11, 0x12,0x13}; 
+  char *testhash;
 
   while (scan_npages-- && likely(!freezing(current))) {
     cond_resched();
     rmap_item = scan_get_next_rmap_item(&page);
     if (!rmap_item)
       return;
+    testhash = get_under20bit(page);
     cmp_and_merge_page(page, rmap_item, testhash);
     put_page(page);
   }
