@@ -47,6 +47,7 @@
 #define DO_NUMA(x)    do { } while (0)
 
 #define KSM_FLAG_MASK	(SEQNR_MASK|UNSTABLE_FLAG|STABLE_FLAG)
+#define SHA1_BLOCK_SIZE 20
 
 /*
  ** A few notes about the KSM scanning process,
@@ -726,44 +727,39 @@ static int remove_stable_node(struct stable_node *stable_node)
   return err;
 }
 
-int remove_all_stable_nodes_in_hash_tree(struct hash_node *hash_node)
+int remove_all_stable_nodes_in_hash_tree(struct rb_node *node)
 {
   struct stable_node *stable_node;
-  struct rb_node *right_node;
-  struct rb_node *left_node;
+  struct hash_node *hash_node;
   int err = 0;
 
-  if (err)
-    return err;
-  if (!hash_node)
+  if (!node)
     return 0;
+  hash_node = rb_entry(node, struct hash_node, node);
   while (hash_node->root_stable_tree.rb_node) {
     stable_node = rb_entry(hash_node->root_stable_tree.rb_node,
                            struct stable_node, node);
-    if (remove_stable_node(stable_node, hash_node->root_stable_tree)) {
+    if (remove_stable_node(stable_node)) {
       err = -EBUSY;
       return err;
     }
     cond_resched();
   }
-  if (hash_node->node.rb_right) {
-    right_node = rb_entry(hash_node->node.rb_right, struct hash_node, node);
-    err = remove_all_stable_nodes_in_hash_tree(right_node);
-  }
+  err = remove_all_stable_nodes_in_hash_tree(node->rb_right);
+  if (err)
+    return err;
 
-  if (hash_node->node.rb_left){
-    left_node = rb_entry(hash_node->node.rb_left, struct hash_node, node); 
-    err = remove_all_stable_nodes_in_hash_tree(left_node);
-  }
+  err = remove_all_stable_nodes_in_hash_tree(node->rb_left);
+  if (err)
+    return err;
 
   return 0;
 
 }
 static int remove_all_stable_nodes(void)
 {
-  struct hash_node first;
-  first = rb_entry(rb_first(&root_hash_tree), struct hash_node, node);
-  remove_one_stable_tree(first);
+  int err;
+  err = remove_all_stable_nodes_in_hash_tree(rb_first(&root_hash_tree));
 
   /* for migration
   list_for_each_safe(this, next, &migrate_nodes) {
@@ -1181,7 +1177,6 @@ static struct page *try_to_merge_two_pages(struct rmap_item *rmap_item,
  *         */
 static struct page *stable_tree_search(struct page *page, struct rb_root *root_stable_tree)
 {
-  int nid;
   struct rb_root *root;
   struct rb_node **new;
   struct rb_node *parent;
@@ -1250,18 +1245,6 @@ again:
   get_page(page);
   return page;
 
-replace:
-  if (page_node) {
-    list_del(&page_node->list);
-    rb_replace_node(&stable_node->node, &page_node->node, root);
-    get_page(page);
-  } else {
-    rb_erase(&stable_node->node, root);
-    page = NULL;
-  }
-  stable_node->head = &migrate_nodes;
-  list_add(&stable_node->list, stable_node->head);
-  return page;
 }
 
 /*
@@ -1273,7 +1256,6 @@ replace:
  *       */
 static struct stable_node *stable_tree_insert(struct page *kpage, struct rb_root *root_stable_tree)
 {
-  int nid;
   unsigned long kpfn;
   struct rb_root *root;
   struct rb_node **new;
@@ -1344,7 +1326,7 @@ static
 struct rmap_item *unstable_tree_search_insert(struct rmap_item *rmap_item,
                                               struct page *page,
                                               struct page **tree_pagep,
-                                              struct rb_root root_unstable_tree)
+                                              struct rb_root *root_unstable_tree)
 {
   struct rb_node **new;
   struct rb_root *root;
@@ -1430,7 +1412,6 @@ struct hash_node* hash_tree_search_insert(char *hash) {
   new = &root->rb_node;
   while (*new) {
     struct hash_node *tree_hash_node;
-    char *tree_hash;
     int ret;
     cond_resched();
     tree_hash_node = rb_entry(*new, struct hash_node, node);
@@ -1585,7 +1566,7 @@ void reset_all_unstable(struct rb_node *node) {
   if (!node)
     return;
   hash_node = rb_entry(node, struct hash_node, node);
-  hash_node->unstable_tree = RB_ROOT;
+  hash_node->root_unstable_tree = RB_ROOT;
   reset_all_unstable(node->rb_right);
   reset_all_unstable(node->rb_left);
 }
@@ -1735,14 +1716,14 @@ static void ksm_do_scan(unsigned int scan_npages)
 {
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
+  char testhash[20] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x7, 0x8, 0x9,0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10, 0x11, 0x12,0x13}; 
 
-  printk(KERN_DEBUG "ksm_do_scanaaaaa");
   while (scan_npages-- && likely(!freezing(current))) {
     cond_resched();
     rmap_item = scan_get_next_rmap_item(&page);
     if (!rmap_item)
       return;
-    cmp_and_merge_page(page, rmap_item);
+    cmp_and_merge_page(page, rmap_item, testhash);
     put_page(page);
   }
 }
