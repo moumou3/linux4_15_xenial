@@ -1710,14 +1710,15 @@ next_mm:
   return NULL;
 }
 
-static char* get_under20bit(struct page *page)
+char* test_hash_func(struct page *page)
 {
   char *hash = kmalloc(SHA1_BLOCK_SIZE, GFP_KERNEL);
   void *addr = kmap_atomic(page);
-  memcpy(hash, addr + PAGE_SIZE - SHA1_BLOCK_SIZE, SHA1_BLOCK_SIZE);
+  memcpy(hash, addr, SHA1_BLOCK_SIZE);
   kunmap_atomic(addr);
   return hash;
 }
+
 
 /**
  ** ksm_do_scan  - the ksm scanner main worker function.
@@ -1734,7 +1735,7 @@ static void ksm_do_scan(unsigned int scan_npages)
     rmap_item = scan_get_next_rmap_item(&page);
     if (!rmap_item)
       return;
-    testhash = get_under20bit(page);
+    testhash = test_hash_func(page);
     cmp_and_merge_page(page, rmap_item, testhash);
     put_page(page);
   }
