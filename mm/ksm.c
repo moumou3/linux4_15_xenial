@@ -759,7 +759,7 @@ int remove_all_stable_nodes_in_hash_tree(struct rb_node *node)
 int remove_all_stable_nodes(void)
 {
   int err;
-  err = remove_all_stable_nodes_in_hash_tree(rb_first(&root_hash_tree));
+  err = remove_all_stable_nodes_in_hash_tree(root_hash_tree.rb_node);
 
   /* for migration
   list_for_each_safe(this, next, &migrate_nodes) {
@@ -1602,7 +1602,7 @@ struct rmap_item *scan_get_next_rmap_item(struct page **page)
      ** so prune them once before each full scan.
      **/
 
-    reset_all_unstable(rb_first(&root_hash_tree));
+    reset_all_unstable(root_hash_tree.rb_node);;
 
     spin_lock(&ksm_mmlist_lock);
     slot = list_entry(slot->mm_list.next, struct mm_slot, mm_list);
