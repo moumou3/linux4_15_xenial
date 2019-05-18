@@ -182,6 +182,13 @@ struct rmap_item {
 #define UNSTABLE_FLAG    0x100    /* is a node of the unstable tree */
 #define STABLE_FLAG    0x200    /* is listed from the stable tree */
 
+#define GPU_LAUNCH 0x1
+#define GPU_CALCEND 0x2
+
+/*ugpud mm */
+static struct vm_area_struct *ugpud_vma;
+static unsigned char *ugpud_flag = NULL;
+
 /* The stable and unstable tree heads */
 static struct rb_root root_hash_tree = RB_ROOT;
 
@@ -1460,11 +1467,8 @@ void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item, char *ha
   unsigned int checksum;
   int err;
 
-  hash_node = hash_tree_search_insert(hash);
   stable_node = page_stable_node(page);
-  if (stable_node && rmap_item->head == stable_node) {
-    return;
-  }
+  hash_node = hash_tree_search_insert(hash);
 
   /* We first start with searching the page inside the stable tree */
   kpage = stable_tree_search(page, &hash_node->root_stable_tree);
@@ -1728,16 +1732,55 @@ void ksm_do_scan(unsigned int scan_npages)
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
   char *testhash;
+  struct rmap_item **rmap_items;
+  struct page **pages;
+  int count = 0;
+  struct stable_node *stable_node;
 
-  while (scan_npages-- && likely(!freezing(current))) {
+  rmap_items = (struct rmap_item **)kmalloc(sizeof(struct rmap_item*) * scan_npages, GFP_KERNEL);
+  pages = (struct page **)kmalloc(sizeof(struct pages*) * scan_npages, GFP_KERNEL);
+
+
+  while (count < scan_npages && likely(!freezing(current))) {
     cond_resched();
-    rmap_item = scan_get_next_rmap_item(&page);
+    rmap_items[count] = scan_get_next_rmap_item(&page);
+    pages[count] = page;
     if (!rmap_item)
       return;
-    testhash = test_hash_func(page);
-    cmp_and_merge_page(page, rmap_item, testhash);
-    put_page(page);
+    count++;
   }
+
+  count = 0;
+  while (count < scan_npages && likely(!freezing(current))) {
+    stable_node = page_stable_node(pages[count]);
+    if (stable_node && rmap_item[count]->head == stable_node) {
+      put_page(pages[count]);
+      count++;
+      page[count] = NULL;
+      continue;
+    }
+  //pfn = page_to_pfn
+  //assert(err)
+  //err = remap_pfn_range(vma, vma->vm_start + count * PAGE_SIZE, pfn, PAGE_SIZE, vma->vm_page_prot);
+  }
+
+  *ugpud_flag = GPU_LAUNCH;
+  while(*ugpud_flag != GPU_CALCEND) {
+    yield();
+  }
+  count = 0;
+
+  while (count < scan_npages && likely(!freezing(current))) {
+    if (!pages[count]) {
+      count++;
+      continue;
+    }
+    cmp_and_merge_page(pages[count], rmap_items[count], page_hash[count]);
+    put_page(pages[count]);
+    count++;
+  }
+  kfree(rmap_items);
+  kfree(pages)
 }
 
 static int ksmd_should_run(void)
