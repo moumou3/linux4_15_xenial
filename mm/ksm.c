@@ -231,6 +231,16 @@ static DEFINE_SPINLOCK(ksm_mmlist_lock);
                                                             sizeof(struct __struct), __alignof__(struct __struct),\
                                                             (__flags), NULL)
 
+
+
+static inline unsigned long long rdtsc() {
+  unsigned long long ret;
+
+  __asm__ volatile ("rdtsc" : "=A" (ret));
+
+  return ret;
+}
+
 static int __init ksm_slab_init(void)
 {
   rmap_item_cache = KSM_KMEM_CACHE(rmap_item, 0);
@@ -1406,23 +1416,37 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   struct page *kpage;
   unsigned int checksum;
   int err;
+  unsigned long long start_page_stable_node, end_page_stable_node;
+  unsigned long long start_stable_tree_search, end_stable_tree_search;
+  unsigned long long start_remove_rmap_item, end_remove_rmap_item;
+  unsigned long long start_stable_tree_append, end_stable_tree_append;
+  unsigned long long start_calc_checksum, end_calc_checksum;
+  unsigned long long start_unstable_tree_search_insert, end_unstable_tree_search_insert;
+  unsigned long long start_move_to_stable, end_move_to_stable;
 
+  start_page_stable_node = rdtsc();
   stable_node = page_stable_node(page);
   if (stable_node) {
     if (stable_node->head != &migrate_nodes &&
         rmap_item->head == stable_node)
       return;
   }
+  end_page_stable_node = rdtsc();
 
+  start_stable_tree_search = rdtsc();
   /* We first start with searching the page inside the stable tree */
   kpage = stable_tree_search(page);
   if (kpage == page && rmap_item->head == stable_node) {
     put_page(kpage);
     return;
   }
+  end_stable_tree_search = rdtsc();
 
+  start_remove_rmap_item = rdtsc();
   remove_rmap_item_from_tree(rmap_item);
+  end_remove_rmap_item = rdtsc();
 
+  start_stable_tree_append = rdtsc();
   if (kpage) {
     err = try_to_merge_with_ksm_page(rmap_item, page, kpage);
     if (!err) {
@@ -1437,6 +1461,7 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
     put_page(kpage);
     return;
   }
+  end_stable_tree_append = rdtsc();
 
   /*
    *      * If the hash value of the page has changed from the last time
@@ -1444,14 +1469,20 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
    *                * don't want to insert it in the unstable tree, and we don't want
    *                     * to waste our time searching for something identical to it there.
    *                          */
+  start_calc_checksum = rdtsc();
   checksum = calc_checksum(page);
   if (rmap_item->oldchecksum != checksum) {
     rmap_item->oldchecksum = checksum;
     return;
   }
+  end_calc_checksum = rdtsc();
 
+  start_unstable_tree_search_insert = rdtsc();
   tree_rmap_item =
     unstable_tree_search_insert(rmap_item, page, &tree_page);
+  end_unstable_tree_search_insert = rdtsc();
+
+  start_move_to_stable = rdtsc();
   if (tree_rmap_item) {
     kpage = try_to_merge_two_pages(rmap_item, page,
                                    tree_rmap_item, tree_page);
@@ -1481,6 +1512,17 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
       }
     }
   }
+  end_move_to_stable = rdtsc();
+
+  printk("start_page_stable_node %llu", end_page_stable_node - start_page_stable_node);
+  printk("start_stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
+  printk("start_remove_rmap_item %llu", end_remove_rmap_item - start_remove_rmap_item);
+  printk("start_stable_tree_append %llu", end_stable_tree_append - start_stable_tree_append);
+  printk("start_calc_checksum %llu", end_calc_checksum - start_calc_checksum);
+  printk("start_unstable_tree_search_insert %llu", end_unstable_tree_search_insert - start_unstable_tree_search_insert);
+  printk("start_move_to_stable %llu", end_move_to_stable - start_move_to_stable);
+  usleep_range(2000000, 2000001);
+
 }
 
 static struct rmap_item *get_next_rmap_item(struct mm_slot *mm_slot,
@@ -1660,7 +1702,6 @@ static void ksm_do_scan(unsigned int scan_npages)
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
 
-  printk(KERN_DEBUG "ksm_do_scanaaaaa");
   while (scan_npages-- && likely(!freezing(current))) {
     cond_resched();
     rmap_item = scan_get_next_rmap_item(&page);
