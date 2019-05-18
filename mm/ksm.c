@@ -233,13 +233,6 @@ static DEFINE_SPINLOCK(ksm_mmlist_lock);
 
 
 
-static inline unsigned long long rdtsc() {
-  unsigned long long ret;
-
-  __asm__ volatile ("rdtsc" : "=A" (ret));
-
-  return ret;
-}
 
 static int __init ksm_slab_init(void)
 {
@@ -1424,11 +1417,17 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   unsigned long long start_unstable_tree_search_insert, end_unstable_tree_search_insert;
   unsigned long long start_move_to_stable, end_move_to_stable;
 
+  usleep_range(2000000, 2000001);
+
   start_page_stable_node = rdtsc();
   stable_node = page_stable_node(page);
   if (stable_node) {
     if (stable_node->head != &migrate_nodes &&
-        rmap_item->head == stable_node)
+        rmap_item->head == stable_node) {
+      printk("--------");
+      printk("return after page_stable_node");
+      printk("--------");
+    }
       return;
   }
   end_page_stable_node = rdtsc();
@@ -1436,11 +1435,14 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   start_stable_tree_search = rdtsc();
   /* We first start with searching the page inside the stable tree */
   kpage = stable_tree_search(page);
+  end_stable_tree_search = rdtsc();
   if (kpage == page && rmap_item->head == stable_node) {
     put_page(kpage);
+      printk("--------");
+    printk("return after stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
+      printk("--------");
     return;
   }
-  end_stable_tree_search = rdtsc();
 
   start_remove_rmap_item = rdtsc();
   remove_rmap_item_from_tree(rmap_item);
@@ -1458,6 +1460,11 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
       stable_tree_append(rmap_item, page_stable_node(kpage));
       unlock_page(kpage);
     }
+    end_stable_tree_append = rdtsc();
+      printk("--------");
+    printk("stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
+    printk("return after stable_tree_append%llu", end_stable_tree_append - start_stable_tree_append);
+      printk("--------");
     put_page(kpage);
     return;
   }
@@ -1471,11 +1478,15 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
    *                          */
   start_calc_checksum = rdtsc();
   checksum = calc_checksum(page);
+  end_calc_checksum = rdtsc();
   if (rmap_item->oldchecksum != checksum) {
     rmap_item->oldchecksum = checksum;
+    printk("--------");
+    printk("stable_tree_append %llu", end_stable_tree_append - start_stable_tree_append);
+    printk("return after calc_checksum %llu", end_calc_checksum - start_calc_checksum);
+    printk("--------");
     return;
   }
-  end_calc_checksum = rdtsc();
 
   start_unstable_tree_search_insert = rdtsc();
   tree_rmap_item =
@@ -1514,14 +1525,15 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   }
   end_move_to_stable = rdtsc();
 
-  printk("start_page_stable_node %llu", end_page_stable_node - start_page_stable_node);
-  printk("start_stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
-  printk("start_remove_rmap_item %llu", end_remove_rmap_item - start_remove_rmap_item);
-  printk("start_stable_tree_append %llu", end_stable_tree_append - start_stable_tree_append);
-  printk("start_calc_checksum %llu", end_calc_checksum - start_calc_checksum);
-  printk("start_unstable_tree_search_insert %llu", end_unstable_tree_search_insert - start_unstable_tree_search_insert);
-  printk("start_move_to_stable %llu", end_move_to_stable - start_move_to_stable);
-  usleep_range(2000000, 2000001);
+  printk("--------");
+  printk("page_stable_node %llu", end_page_stable_node - start_page_stable_node);
+  printk("stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
+  printk("remove_rmap_item %llu", end_remove_rmap_item - start_remove_rmap_item);
+  printk("stable_tree_append %llu", end_stable_tree_append - start_stable_tree_append);
+  printk("calc_checksum %llu", end_calc_checksum - start_calc_checksum);
+  printk("unstable_tree_search_insert %llu", end_unstable_tree_search_insert - start_unstable_tree_search_insert);
+  printk("move_to_stable %llu", end_move_to_stable - start_move_to_stable);
+  printk("--------");
 
 }
 
