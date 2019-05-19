@@ -39,6 +39,7 @@
 #include <linux/freezer.h>
 #include <linux/oom.h>
 #include <linux/numa.h>
+#include <linux/xxhash.h>
 
 #include <asm/tlbflush.h>
 #include "internal.h"
@@ -844,7 +845,7 @@ static u32 calc_checksum(struct page *page)
 {
   u32 checksum;
   void *addr = kmap_atomic(page);
-  checksum = jhash2(addr, PAGE_SIZE / 4, 17);
+  checksum = xxh32(addr, PAGE_SIZE, 0);
   kunmap_atomic(addr);
   return checksum;
 }
@@ -1720,12 +1721,14 @@ void ksm_do_scan(unsigned int scan_npages)
 {
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
-  unsigned int testhash;
+  unsigned int pagehash;
   struct rmap_item **rmap_items;
   struct page **pages;
   int count = 0;
   struct stable_node *stable_node;
 
+
+  *ugpud_flag = 0x0;
   rmap_items = (struct rmap_item **)kmalloc(sizeof(struct rmap_item*) * scan_npages, GFP_KERNEL);
   pages = (struct page **)kmalloc(sizeof(struct pages*) * scan_npages, GFP_KERNEL);
 
@@ -1738,8 +1741,8 @@ void ksm_do_scan(unsigned int scan_npages)
       return;
     count++;
   }
-
   count = 0;
+
   while (count < scan_npages && likely(!freezing(current))) {
     stable_node = page_stable_node(pages[count]);
     if (stable_node && rmap_item[count]->head == stable_node) {
@@ -1752,19 +1755,28 @@ void ksm_do_scan(unsigned int scan_npages)
   //assert(err)
   //err = remap_pfn_range(vma, vma->vm_start + count * PAGE_SIZE, pfn, PAGE_SIZE, vma->vm_page_prot);
   }
+  count = 0;
 
   *ugpud_flag = GPU_LAUNCH;
+
+  //temporary code instead of userspace 
+  while (count < scan_npages && likely(!freezing(current))) {
+   pagehash[count] = calc_checksum(page[count]);
+  }
+  count = 0;
+  *ugpud_flag = GPU_CALCEND;
+  //-----
+
   while(*ugpud_flag != GPU_CALCEND) {
     yield();
   }
-  count = 0;
 
   while (count < scan_npages && likely(!freezing(current))) {
     if (!pages[count]) {
       count++;
       continue;
     }
-    cmp_and_merge_page(pages[count], rmap_items[count], page_hash[count]);
+    cmp_and_merge_page(pages[count], rmap_items[count], pagehash[count]);
     put_page(pages[count]);
     count++;
   }
@@ -1843,6 +1855,9 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
       }
 
       *vm_flags &= ~VM_MERGEABLE;
+      break;
+    case MADV_UGPUD_VMA:
+      ugpud_vma = vma;
       break;
   }
 
