@@ -146,7 +146,7 @@ struct hash_node {
   struct rb_node node;
   struct rb_root root_stable_tree;
   struct rb_root root_unstable_tree;
-  char *hash;
+  unsigned int hash;
 };
 
 /**
@@ -1407,7 +1407,7 @@ void stable_tree_append(struct rmap_item *rmap_item,
 
 /*hash_tree_search_insert - search for identical hash */
 
-struct hash_node* hash_tree_search_insert(char *hash) {
+struct hash_node* hash_tree_search_insert(unsigned int hash) {
   struct rb_node **new;
   struct rb_root *root;
   struct rb_node *parent = NULL;
@@ -1418,18 +1418,15 @@ struct hash_node* hash_tree_search_insert(char *hash) {
   new = &root->rb_node;
   while (*new) {
     struct hash_node *tree_hash_node;
-    int ret;
     cond_resched();
     tree_hash_node = rb_entry(*new, struct hash_node, node);
-    ret = memcmp(hash, tree_hash_node->hash, SHA1_BLOCK_SIZE);
 
     parent = *new;
-    if (ret < 0) {
+    if (hash < tree_hash_node->hash) {
       new = &parent->rb_left;
-    } else if (ret > 0) {
+    } else if (hash > tree_hash_node->hash) {
       new = &parent->rb_right;
     } else {
-      kfree(hash);
       return  tree_hash_node;
     }
   }
@@ -1457,7 +1454,7 @@ struct hash_node* hash_tree_search_insert(char *hash) {
  ** @page: the page that we are searching identical page to.
  ** @rmap_item: the reverse mapping into the virtual address of this page
  **/
-void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item, char *hash)
+void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item, unsigned int hash)
 {
   struct rmap_item *tree_rmap_item;
   struct page *tree_page = NULL;
@@ -1713,14 +1710,6 @@ next_mm:
   return NULL;
 }
 
-char* test_hash_func(struct page *page)
-{
-  char *hash = kmalloc(SHA1_BLOCK_SIZE, GFP_KERNEL);
-  void *addr = kmap_atomic(page);
-  memcpy(hash, addr, SHA1_BLOCK_SIZE);
-  kunmap_atomic(addr);
-  return hash;
-}
 
 
 /**
@@ -1731,7 +1720,7 @@ void ksm_do_scan(unsigned int scan_npages)
 {
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
-  char *testhash;
+  unsigned int testhash;
   struct rmap_item **rmap_items;
   struct page **pages;
   int count = 0;
