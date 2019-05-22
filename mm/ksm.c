@@ -1820,6 +1820,9 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 {
   struct mm_struct *mm = vma->vm_mm;
   int err;
+  void *kmalloc_ptr;
+  unsigned char *kmalloc_area;
+  int i;
 
   switch (advice) {
     case MADV_MERGEABLE:
@@ -1857,9 +1860,21 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 
       *vm_flags &= ~VM_MERGEABLE;
       break;
-    case MADV_UGPUD_VMA:
+    case MADV_UGPUD_SVM:
       ugpud_vma = vma;
       break;
+    case MADV_UGPUD_FLAG:
+      if ((kmalloc_ptr = kmalloc(2*PAGE_SIZE, GFP_KERNEL)) == NULL) {
+	MY_PRINT_DEBUG(0,0,0);
+      }
+      kmalloc_area = (char*)((((unsigned long)kmalloc_ptr) + PAGE_SIZE - 1) & PAGE_MASK);
+      for (i = 0; i < 1 * PAGE_SIZE; i+= PAGE_SIZE) {
+        SetPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));
+      }
+      ugpud_flag = &kmalloc_area[0];
+      *ugpud_flag = 0x0;
+      err = remap_pfn_range(vma, start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, PAGE_SIZE, vma->vm_page_prot);
+
   }
 
   return 0;
