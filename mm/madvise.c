@@ -709,8 +709,7 @@ madvise_behavior_valid(int behavior)
 #ifdef CONFIG_KSM
 	case MADV_MERGEABLE:
 	case MADV_UNMERGEABLE:
-	case MADV_UGPUD_SVM:
-	case MADV_UGPUD_FLAG:
+	case MADV_UGPUD_VMA:
 #endif
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	case MADV_HUGEPAGE:

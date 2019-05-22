@@ -1733,21 +1733,21 @@ void ksm_do_scan(unsigned int scan_npages)
   pagehashes = (unsigned int*)kmalloc(sizeof(unsigned int) * scan_npages, GFP_KERNEL);
 
 
-  while (count < scan_npages && likely(!freezing(current))) {
+  for (count = 0; count < scan_npages; count++) {
+    if (unlikely(freezing(current))) 
+      return;
     cond_resched();
     rmap_items[count] = scan_get_next_rmap_item(&page);
     pages[count] = page;
     if (!rmap_items[count])
-      return;
-    count++;
+      break;
   }
-  count = 0;
 
-  while (count < scan_npages && likely(!freezing(current))) {
+  scan_npages = count;
+  for (count = 0; count < scan_npages; count++) {
     stable_node = page_stable_node(pages[count]);
     if (stable_node && rmap_items[count]->head == stable_node) {
       put_page(pages[count]);
-      count++;
       pages[count] = NULL;
       continue;
     }
@@ -1755,17 +1755,15 @@ void ksm_do_scan(unsigned int scan_npages)
   //assert(err)
   //err = remap_pfn_range(vma, vma->vm_start + count * PAGE_SIZE, pfn, PAGE_SIZE, vma->vm_page_prot);
   }
-  count = 0;
 
   *ugpud_flag = GPU_LAUNCH;
 
   //temporary code instead of userspace 
-  while (count < scan_npages && likely(!freezing(current))) {
-  if (!pages[count])
-    continue;
-   pagehashes[count] = calc_checksum(pages[count]);
+  for (count = 0; count < scan_npages; count++) {
+    if (!pages[count])
+      continue;
+    pagehashes[count] = calc_checksum(pages[count]);
   }
-  count = 0;
   *ugpud_flag = GPU_CALCEND;
   //-----
 
@@ -1773,14 +1771,12 @@ void ksm_do_scan(unsigned int scan_npages)
     yield();
   }
 
-  while (count < scan_npages && likely(!freezing(current))) {
-    if (!pages[count]) {
-      count++;
+
+  for (count = 0; count < scan_npages; count++) {
+    if (!pages[count])
       continue;
-    }
     cmp_and_merge_page(pages[count], rmap_items[count], pagehashes[count]);
     put_page(pages[count]);
-    count++;
   }
   kfree(pagehashes);
   kfree(rmap_items);
