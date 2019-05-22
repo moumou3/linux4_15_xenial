@@ -52,7 +52,9 @@
 
 #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
 #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
-#define MADV_UGPUD_VMA    95
+#define MADV_UGPUD_FLAG    95
+#define MADV_UGPUD_INPUT    96
+#define MADV_UGPUD_OUTPUT    97
 
 #define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
 #define MADV_NOHUGEPAGE	15		/* Not worth backing with hugepages */

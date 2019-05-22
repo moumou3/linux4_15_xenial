@@ -105,7 +105,9 @@ static long madvise_behavior(struct vm_area_struct *vma,
 		break;
 	case MADV_MERGEABLE:
 	case MADV_UNMERGEABLE:
-	case MADV_UGPUD_VMA:
+	case MADV_UGPUD_INPUT:
+	case MADV_UGPUD_FLAG:
+	case MADV_UGPUD_OUTPUT:
 		error = ksm_madvise(vma, start, end, behavior, &new_flags);
 		if (error) {
 			/*
@@ -709,7 +711,9 @@ madvise_behavior_valid(int behavior)
 #ifdef CONFIG_KSM
 	case MADV_MERGEABLE:
 	case MADV_UNMERGEABLE:
-	case MADV_UGPUD_VMA:
+	case MADV_UGPUD_FLAG:
+	case MADV_UGPUD_INPUT:
+	case MADV_UGPUD_OUTPUT:
 #endif
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	case MADV_HUGEPAGE:

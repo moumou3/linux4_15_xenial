@@ -1860,7 +1860,10 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 
       *vm_flags &= ~VM_MERGEABLE;
       break;
-    case MADV_UGPUD_SVM:
+    case MADV_UGPUD_INPUT:
+      ugpud_vma = vma;
+      break;
+    case MADV_UGPUD_OUTPUT:
       ugpud_vma = vma;
       break;
     case MADV_UGPUD_FLAG:
