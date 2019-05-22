@@ -1729,7 +1729,7 @@ void ksm_do_scan(unsigned int scan_npages)
 
   *ugpud_flag = 0x0;
   rmap_items = (struct rmap_item **)kmalloc(sizeof(struct rmap_item*) * scan_npages, GFP_KERNEL);
-  pages = (struct page **)kmalloc(sizeof(struct pages*) * scan_npages, GFP_KERNEL);
+  pages = (struct page **)kmalloc(sizeof(struct page*) * scan_npages, GFP_KERNEL);
   pagehashes = (unsigned int*)kmalloc(sizeof(unsigned int) * scan_npages, GFP_KERNEL);
 
 
@@ -1737,7 +1737,7 @@ void ksm_do_scan(unsigned int scan_npages)
     cond_resched();
     rmap_items[count] = scan_get_next_rmap_item(&page);
     pages[count] = page;
-    if (!rmap_item)
+    if (!rmap_items[count])
       return;
     count++;
   }
@@ -1761,6 +1761,8 @@ void ksm_do_scan(unsigned int scan_npages)
 
   //temporary code instead of userspace 
   while (count < scan_npages && likely(!freezing(current))) {
+  if (!pages[count])
+    continue;
    pagehashes[count] = calc_checksum(pages[count]);
   }
   count = 0;
