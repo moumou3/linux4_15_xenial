@@ -1498,7 +1498,9 @@ void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item, unsigned
    ** don't want to insert it in the unstable tree, and we don't want
    ** to waste our time searching for something identical to it there.
    **/
-  checksum = calc_checksum(page);
+  //checksum = calc_checksum(page);
+  //we can reuse hash to checksum
+  checksum = hash;
   if (rmap_item->oldchecksum != checksum) {
     rmap_item->oldchecksum = checksum;
     return;
