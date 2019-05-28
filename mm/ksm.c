@@ -1803,7 +1803,7 @@ void ksm_do_scan(unsigned int scan_npages)
 
   start_cmp_and_merge = rdtsc();
   for (count = 0; count < scan_npages; count++) {
-    if (!pages[counnt]) {
+    if (!pages[count]) {
       continue;
     }
     cmp_and_merge_page(pages[count], rmap_items[count], ugpud_out[remapcount++]);
@@ -1923,7 +1923,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
         SetPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));
       }
       ugpud_out = (unsigned int*)kmalloc_area;
-      err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, memsize, v     ma->vm_page_prot);
+      err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, memsize, vma->vm_page_prot);
       break;
     case MADV_UGPUD_FLAG:
       printk("flag madvise start");
@@ -1937,7 +1937,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
       }
       ugpud_flag = &kmalloc_area[0];
       *ugpud_flag = 0x0;
-      err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, PAGE_SIZE,      vma->vm_page_prot);
+      err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, PAGE_SIZE, vma->vm_page_prot);
   }
 
   return 0;
