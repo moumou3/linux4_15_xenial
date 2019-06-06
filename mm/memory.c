@@ -80,6 +80,7 @@
 #include <asm/pgtable.h>
 
 #include "internal.h"
+#include "mytrace.h"
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -93,6 +94,9 @@ EXPORT_SYMBOL(max_mapnr);
 struct page *mem_map;
 EXPORT_SYMBOL(mem_map);
 #endif
+
+/* ugpud damon */
+extern struct vm_area_struct *ugpud_vma;
 
 /*
  * A number of key systems in x86 including ioremap() rely on the assumption
@@ -116,6 +120,8 @@ int randomize_va_space __read_mostly =
 #else
 					2;
 #endif
+
+
 
 static int __init disable_randmaps(char *s)
 {
@@ -864,6 +870,12 @@ struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 				return NULL;
 			}
 		}
+		//MY_PRINT_DEBUG(0,vma->vm_mm,addr);
+		if (vma->vm_mm == ugpud_vma->vm_mm) {
+		 // printk("ugpud_vma");
+		  return pfn_to_page(pfn);
+		}
+	        //printk("ugpud_vma->vm_mm? %llx", ugpud_vma->vm_mm);
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
 	}
@@ -889,6 +901,7 @@ struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 		return NULL;
 check_pfn:
 	if (unlikely(pfn > highest_memmap_pfn)) {
+		//MY_PRINT_DEBUG(0,0,0);
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
 	}
@@ -1341,8 +1354,14 @@ again:
 			}
 			rss[mm_counter(page)]--;
 			page_remove_rmap(page, false);
-			if (unlikely(page_mapcount(page) < 0))
+			int return_pagemap = 0;
+                        return_pagemap = unlikely(page_mapcount(page) < 0);
+			if ( return_pagemap) {
+			        //MY_PRINT_DEBUG(atomic_read(&page->_mapcount),0,0);
+			        //MY_PRINT_DEBUG(PageCompound(page),0,0);
+			        //printk("return_pagemap %d", return_pagemap);
 				print_bad_pte(vma, addr, ptent, page);
+			}
 			if (unlikely(__tlb_remove_page(tlb, page))) {
 				force_flush = 1;
 				addr += PAGE_SIZE;
@@ -1992,7 +2011,7 @@ static int remap_pte_range(struct mm_struct *mm, pmd_t *pmd,
 		return -ENOMEM;
 	arch_enter_lazy_mmu_mode();
 	do {
-		BUG_ON(!pte_none(*pte));
+		//BUG_ON(!pte_none(*pte));
 		if (!pfn_modify_allowed(pfn, prot)) {
 			err = -EACCES;
 			break;
@@ -2110,15 +2129,19 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	 * un-COW'ed pages by matching them up with "vma->vm_pgoff".
 	 * See vm_normal_page() for details.
 	 */
+	//MY_PRINT_DEBUG(0,vma->vm_flags, addr);
+	//MY_PRINT_DEBUG(is_cow_mapping(vma->vm_flags),vma->vm_end,end);
 	if (is_cow_mapping(vma->vm_flags)) {
 		if (addr != vma->vm_start || end != vma->vm_end)
 			return -EINVAL;
 		vma->vm_pgoff = pfn;
 	}
+	//MY_PRINT_DEBUG(0,0,0);
 
 	err = track_pfn_remap(vma, &prot, remap_pfn, addr, PAGE_ALIGN(size));
 	if (err)
 		return -EINVAL;
+	//MY_PRINT_DEBUG(0,0,0);
 
 	vma->vm_flags |= VM_IO | VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP;
 
@@ -2133,6 +2156,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 		if (err)
 			break;
 	} while (pgd++, addr = next, addr != end);
+	//MY_PRINT_DEBUG(0,0,0);
 
 	if (err)
 		untrack_pfn(vma, remap_pfn, PAGE_ALIGN(size));

@@ -188,7 +188,8 @@ struct rmap_item {
 #define GPU_CALCEND 0x2
 
 /*ugpud mm */
-static struct vm_area_struct *ugpud_vma;
+struct vm_area_struct *ugpud_vma;
+EXPORT_SYMBOL(ugpud_vma);
 static unsigned char *ugpud_flag = NULL;
 static unsigned int *ugpud_out;
 
@@ -1735,7 +1736,8 @@ void ksm_do_scan(unsigned int scan_npages)
   unsigned long long start_remap_pfn_range, end_remap_pfn_range;
   unsigned long long start_cmp_and_merge, end_cmp_and_merge;
 
-  usleep_range(2000000, 2000001);
+  //usleep_range(2000000, 2000001);
+  //MY_PRINT_DEBUG(is_cow_mapping(ugpud_vma->vm_flags),0,0);
 
   *ugpud_flag = 0x0;
   rmap_items = (struct rmap_item **)kmalloc(sizeof(struct rmap_item*) * scan_npages, GFP_KERNEL);
@@ -1745,7 +1747,7 @@ void ksm_do_scan(unsigned int scan_npages)
 
   flush_cache_mm(ugpud_vma->vm_mm);
   flush_tlb_mm(ugpud_vma->vm_mm);
-  printk("do scan starts");
+  //printk("do scan starts->vm_starts %llx", ugpud_vma->vm_start);
   for (count = 0; count < scan_npages; count++) {
     if (unlikely(freezing(current))) 
       return;
@@ -1768,8 +1770,12 @@ void ksm_do_scan(unsigned int scan_npages)
     SetPageReserved(pages[count]);
     err = remap_pfn_range(ugpud_vma, ugpud_vma->vm_start + remapcount * PAGE_SIZE, page_to_pfn(pages[count]), PAGE_SIZE, ugpud_vma->vm_page_prot);
     remapcount++;
+    /*
     if (err)
-      printk("\n bug on remap \n ");
+      printk("\n bug on remap %d\n ", count);
+    else 
+      printk("\n no err on remap%d\n ", count);
+      */
   }
   end_remap_pfn_range = rdtsc();
 
@@ -1777,7 +1783,8 @@ void ksm_do_scan(unsigned int scan_npages)
   ugpud_out[0] = remapcount;
   remapcount = 0;
 
-  //temporary code instead of userspace 
+  //userspace check code
+  /*
   for (count = 0; count < scan_npages; count++) {
     if (!pages[count])
       continue;
@@ -1785,6 +1792,7 @@ void ksm_do_scan(unsigned int scan_npages)
   }
   //*ugpud_flag = GPU_CALCEND;
   //-----
+  //*/
 
   while(*ugpud_flag != GPU_CALCEND) {
     yield();
@@ -1794,10 +1802,12 @@ void ksm_do_scan(unsigned int scan_npages)
   for (count = 0; count < scan_npages; count++) {
     if (!pages[count])
       continue;
+    /* userspace check code 
     if (pagehashes[count] == ugpud_out[remapcount++])
       printk("ugpud_out ok:%lu", pagehashes[count]);
     else 
       printk("ugpud_out ng:%lu, %lu", pagehashes[count], ugpud_out[remapcount-1]);
+      */
   }
   remapcount = 0;
 
@@ -1812,8 +1822,8 @@ void ksm_do_scan(unsigned int scan_npages)
   }
   end_cmp_and_merge = rdtsc();
 
-  printk("remap_pfn_range %llu", end_remap_pfn_range - start_remap_pfn_range);
-  printk("cmp_and_merge %llu", end_cmp_and_merge - start_cmp_and_merge);
+  //printk("remap_pfn_range %llu", end_remap_pfn_range - start_remap_pfn_range);
+  //printk("cmp_and_merge %llu", end_cmp_and_merge - start_cmp_and_merge);
   kfree(pagehashes);
   kfree(rmap_items);
   kfree(pages);
@@ -1898,11 +1908,13 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
     case MADV_UGPUD_INPUT:
       printk("input madvise start");
       ugpud_vma = vma;
+      ugpud_vma->vm_flags |= VM_SHARED;
+      *vm_flags |= VM_SHARED;
       printk("vma->start %llx", vma->vm_start);
       printk("start %llx", start);
       printk("vma->end %llx", vma->vm_end);
       printk("end %llx", end);
-      if (is_cow_mapping(vma->vm_flags))
+      if (is_cow_mapping(ugpud_vma->vm_flags))
         printk("cow_mapping");
       break;
     case MADV_UGPUD_OUTPUT:
@@ -1912,7 +1924,9 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
       printk("start %llx", start);
       printk("vma->end %llx", vma->vm_end);
       printk("end %llx", end);
-      if (is_cow_mapping(vma->vm_flags))
+      printk("ugpud_vma->start %llx", ugpud_vma->vm_start);
+      printk("ugpud_vma->end %llx", ugpud_vma->vm_end);
+      if (is_cow_mapping(ugpud_vma->vm_flags))
         printk("cow_mapping");
 
       if ((kmalloc_ptr = kmalloc(memsize + PAGE_SIZE, GFP_KERNEL)) == NULL) {
@@ -1923,7 +1937,7 @@ int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
         SetPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));
       }
       ugpud_out = (unsigned int*)kmalloc_area;
-      err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, memsize, vma->vm_page_prot);
+      err = remap_pfn_range(vma, start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, memsize, vma->vm_page_prot);
       break;
     case MADV_UGPUD_FLAG:
       printk("flag madvise start");
