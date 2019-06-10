@@ -1738,11 +1738,11 @@ void ksm_do_scan(unsigned int scan_npages)
   unsigned long long start_allocs, end_allocs;
   unsigned long long start_flush, end_flush;
   unsigned long long start_get_next_rmap_item, end_get_next_rmap_item;
-  const unsigned long long const_remap_pfn_range = 0;
-  const unsigned long long const_cmp_and_merge = 0;
-  const unsigned long long const_allocs = 0;
-  const unsigned long long const_flush = 0;
-  const unsigned long long const_get_next_rmap_item = 0;
+  static unsigned long long static_remap_pfn_range = 0;
+  static unsigned long long static_cmp_and_merge = 0;
+  static unsigned long long static_allocs = 0;
+  static unsigned long long static_flush = 0;
+  static unsigned long long static_get_next_rmap_item = 0;
 
 
   //usleep_range(2000000, 2000001);
@@ -1811,18 +1811,18 @@ void ksm_do_scan(unsigned int scan_npages)
   }
   end_cmp_and_merge = rdtsc(); //
 
-  const_allocs += end_allocs - start_allocs;
-  const_flush += end_flush - start_flush;
-  const_get_next_rmap_item += end_get_next_rmap_item - start_get_next_rmap_item;
-  const_remap_pfn_range += end_remap_pfn_range - start_remap_pfn_range;
-  const_cmp_and_merge += end_cmp_and_merge - start_cmp_and_merge;
+  static_allocs += end_allocs - start_allocs;
+  static_flush += end_flush - start_flush;
+  static_get_next_rmap_item += end_get_next_rmap_item - start_get_next_rmap_item;
+  static_remap_pfn_range += end_remap_pfn_range - start_remap_pfn_range;
+  static_cmp_and_merge += end_cmp_and_merge - start_cmp_and_merge;
 
   printk("---sharing----%llu", ksm_pages_sharing);
-  printk("allocs %llu, const %llu", end_allocs - start_allocs, const_allocs);
-  printk("flush %llu, const %llu", end_flush - start_flush, const_flush);
-  printk("get_next_rmap_item %llu, const %llu", end_get_next_rmap_item - start_get_next_rmap_item, const_get_next_rmap_item);
-  printk("remap_pfn_range %llu, const %llu", end_remap_pfn_range - start_remap_pfn_range, const_remap_pfn_range);
-  printk("cmp_and_merge %llu, const %llu", end_cmp_and_merge - start_cmp_and_merge, const_cmp_and_merge);
+  printk("allocs %llu, static %llu", end_allocs - start_allocs, static_allocs);
+  printk("flush %llu, static %llu", end_flush - start_flush, static_flush);
+  printk("get_next_rmap_item %llu, static %llu", end_get_next_rmap_item - start_get_next_rmap_item, static_get_next_rmap_item);
+  printk("remap_pfn_range %llu, static %llu", end_remap_pfn_range - start_remap_pfn_range, static_remap_pfn_range);
+  printk("cmp_and_merge %llu, static %llu", end_cmp_and_merge - start_cmp_and_merge, static_cmp_and_merge);
   kfree(pagehashes);
   kfree(rmap_items);
   kfree(pages);
