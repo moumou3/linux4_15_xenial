@@ -1770,12 +1770,6 @@ void ksm_do_scan(unsigned int scan_npages)
     SetPageReserved(pages[count]);
     err = remap_pfn_range(ugpud_vma, ugpud_vma->vm_start + remapcount * PAGE_SIZE, page_to_pfn(pages[count]), PAGE_SIZE, ugpud_vma->vm_page_prot);
     remapcount++;
-    /*
-    if (err)
-      printk("\n bug on remap %d\n ", count);
-    else 
-      printk("\n no err on remap%d\n ", count);
-      */
   }
   end_remap_pfn_range = rdtsc();
 
@@ -1783,32 +1777,12 @@ void ksm_do_scan(unsigned int scan_npages)
   ugpud_out[0] = remapcount;
   remapcount = 0;
 
-  //userspace check code
-  /*
-  for (count = 0; count < scan_npages; count++) {
-    if (!pages[count])
-      continue;
-    pagehashes[count] = calc_checksum(pages[count]);
-  }
-  //*ugpud_flag = GPU_CALCEND;
-  //-----
-  //*/
 
   while(*ugpud_flag != GPU_CALCEND) {
     yield();
   }
 
 
-  for (count = 0; count < scan_npages; count++) {
-    if (!pages[count])
-      continue;
-    /* userspace check code 
-    if (pagehashes[count] == ugpud_out[remapcount++])
-      printk("ugpud_out ok:%lu", pagehashes[count]);
-    else 
-      printk("ugpud_out ng:%lu, %lu", pagehashes[count], ugpud_out[remapcount-1]);
-      */
-  }
   remapcount = 0;
 
   start_cmp_and_merge = rdtsc();
@@ -1849,8 +1823,8 @@ int ksm_scan_thread(void *nothing)
     try_to_freeze();
 
     if (ksmd_should_run()) {
-      schedule_timeout_interruptible(
-        msecs_to_jiffies(ksm_thread_sleep_millisecs));
+      //schedule_timeout_interruptible(
+       // msecs_to_jiffies(ksm_thread_sleep_millisecs));
     } else {
       wait_event_freezable(ksm_thread_wait,
                            ksmd_should_run() || kthread_should_stop());
@@ -2460,3 +2434,4 @@ out:
   return err;
 }
 subsys_initcall(ksm_init);
+
