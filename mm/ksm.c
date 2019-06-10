@@ -1735,21 +1735,35 @@ void ksm_do_scan(unsigned int scan_npages)
 
   unsigned long long start_remap_pfn_range, end_remap_pfn_range;
   unsigned long long start_cmp_and_merge, end_cmp_and_merge;
+  unsigned long long start_allocs, end_allocs;
+  unsigned long long start_flush, end_flush;
+  unsigned long long start_get_next_rmap_item, end_get_next_rmap_item;
+  const unsigned long long const_remap_pfn_range = 0;
+  const unsigned long long const_cmp_and_merge = 0;
+  const unsigned long long const_allocs = 0;
+  const unsigned long long const_flush = 0;
+  const unsigned long long const_get_next_rmap_item = 0;
+
 
   //usleep_range(2000000, 2000001);
   //MY_PRINT_DEBUG(is_cow_mapping(ugpud_vma->vm_flags),0,0);
 
+  start_allocs  = rdtsc(); //
   *ugpud_flag = 0x0;
   rmap_items = (struct rmap_item **)kmalloc(sizeof(struct rmap_item*) * scan_npages, GFP_KERNEL);
   pages = (struct page **)kmalloc(sizeof(struct page*) * scan_npages, GFP_KERNEL);
   pagehashes = (unsigned int*)kmalloc(sizeof(unsigned int) * scan_npages, GFP_KERNEL);
+  end_allocs  = rdtsc(); //
 
 
+  start_flush = rdtsc(); //
   flush_cache_mm(ugpud_vma->vm_mm);
   flush_tlb_mm(ugpud_vma->vm_mm);
-  //printk("do scan starts->vm_starts %llx", ugpud_vma->vm_start);
+  end_flush  = rdtsc(); //
+
+  start_get_next_rmap_item = rdtsc(); //
   for (count = 0; count < scan_npages; count++) {
-    if (unlikely(freezing(current))) 
+    if (unlikely(freezing(current)))
       return;
     cond_resched();
     rmap_items[count] = scan_get_next_rmap_item(&page);
@@ -1757,9 +1771,10 @@ void ksm_do_scan(unsigned int scan_npages)
     if (!rmap_items[count])
       break;
   }
+  end_get_next_rmap_item = rdtsc(); //
 
+  start_remap_pfn_range = rdtsc(); //
   scan_npages = count;
-  start_remap_pfn_range = rdtsc();
   for (count = 0; count < scan_npages; count++) {
     stable_node = page_stable_node(pages[count]);
     if (stable_node && rmap_items[count]->head == stable_node) {
@@ -1771,7 +1786,7 @@ void ksm_do_scan(unsigned int scan_npages)
     err = remap_pfn_range(ugpud_vma, ugpud_vma->vm_start + remapcount * PAGE_SIZE, page_to_pfn(pages[count]), PAGE_SIZE, ugpud_vma->vm_page_prot);
     remapcount++;
   }
-  end_remap_pfn_range = rdtsc();
+  end_remap_pfn_range = rdtsc(); //
 
   *ugpud_flag = GPU_LAUNCH;
   ugpud_out[0] = remapcount;
@@ -1785,7 +1800,7 @@ void ksm_do_scan(unsigned int scan_npages)
 
   remapcount = 0;
 
-  start_cmp_and_merge = rdtsc();
+  start_cmp_and_merge = rdtsc(); //
   for (count = 0; count < scan_npages; count++) {
     if (!pages[count]) {
       continue;
@@ -1794,10 +1809,20 @@ void ksm_do_scan(unsigned int scan_npages)
     put_page(pages[count]);
     ClearPageReserved(pages[count]);
   }
-  end_cmp_and_merge = rdtsc();
+  end_cmp_and_merge = rdtsc(); //
 
-  //printk("remap_pfn_range %llu", end_remap_pfn_range - start_remap_pfn_range);
-  //printk("cmp_and_merge %llu", end_cmp_and_merge - start_cmp_and_merge);
+  const_allocs += end_allocs - start_allocs;
+  const_flush += end_flush - start_flush;
+  const_get_next_rmap_item += end_get_next_rmap_item - start_get_next_rmap_item;
+  const_remap_pfn_range += end_remap_pfn_range - start_remap_pfn_range;
+  const_cmp_and_merge += end_cmp_and_merge - start_cmp_and_merge;
+
+  printk("---sharing----%llu", ksm_pages_sharing);
+  printk("allocs %llu, const %llu", end_allocs - start_allocs, const_allocs);
+  printk("flush %llu, const %llu", end_flush - start_flush, const_flush);
+  printk("get_next_rmap_item %llu, const %llu", end_get_next_rmap_item - start_get_next_rmap_item, const_get_next_rmap_item);
+  printk("remap_pfn_range %llu, const %llu", end_remap_pfn_range - start_remap_pfn_range, const_remap_pfn_range);
+  printk("cmp_and_merge %llu, const %llu", end_cmp_and_merge - start_cmp_and_merge, const_cmp_and_merge);
   kfree(pagehashes);
   kfree(rmap_items);
   kfree(pages);
