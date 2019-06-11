@@ -1385,7 +1385,7 @@ static void stable_tree_append(struct rmap_item *rmap_item,
   rmap_item->address |= STABLE_FLAG;
   hlist_add_head(&rmap_item->hlist, &stable_node->hlist);
 
-  printk(KERN_DEBUG "ksm_pages_ %d", ksm_pages_sharing);
+  //printk(KERN_DEBUG "ksm_pages_ %d", ksm_pages_sharing);
   if (rmap_item->hlist.next)
     ksm_pages_sharing++;
   else
@@ -1417,16 +1417,18 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   unsigned long long start_unstable_tree_search_insert, end_unstable_tree_search_insert;
   unsigned long long start_move_to_stable, end_move_to_stable;
 
-  usleep_range(2000000, 2000001);
+  //usleep_range(2000000, 2000001);
 
   start_page_stable_node = rdtsc();
   stable_node = page_stable_node(page);
   if (stable_node) {
     if (stable_node->head != &migrate_nodes &&
         rmap_item->head == stable_node) {
+      /*
       printk("--------");
       printk("return after page_stable_node");
       printk("--------");
+      */
     }
       return;
   }
@@ -1438,9 +1440,11 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   end_stable_tree_search = rdtsc();
   if (kpage == page && rmap_item->head == stable_node) {
     put_page(kpage);
+    /*
       printk("--------");
     printk("return after stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
       printk("--------");
+      */
     return;
   }
 
@@ -1461,10 +1465,12 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
       unlock_page(kpage);
     }
     end_stable_tree_append = rdtsc();
+    /*
       printk("--------");
     printk("stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
     printk("return after stable_tree_append%llu", end_stable_tree_append - start_stable_tree_append);
       printk("--------");
+      */
     put_page(kpage);
     return;
   }
@@ -1481,10 +1487,12 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   end_calc_checksum = rdtsc();
   if (rmap_item->oldchecksum != checksum) {
     rmap_item->oldchecksum = checksum;
+    /*
     printk("--------");
     printk("stable_tree_append %llu", end_stable_tree_append - start_stable_tree_append);
     printk("return after calc_checksum %llu", end_calc_checksum - start_calc_checksum);
     printk("--------");
+    */
     return;
   }
 
@@ -1500,9 +1508,9 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
     put_page(tree_page);
     if (kpage) {
       /*
-       *              * The pages were successfully merged: insert new
-       *                           * node in the stable tree and add both rmap_items.
-       *                                        */
+       ** The pages were successfully merged: insert new
+       ** node in the stable tree and add both rmap_items.
+       **/
       lock_page(kpage);
       stable_node = stable_tree_insert(kpage);
       if (stable_node) {
@@ -1512,11 +1520,11 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
       unlock_page(kpage);
 
       /*
-       *              * If we fail to insert the page into the stable tree,
-       *                           * we will have 2 virtual addresses that are pointing
-       *                                        * to a ksm page left outside the stable tree,
-       *                                                     * in which case we need to break_cow on both.
-       *                                                                  */
+       ** If we fail to insert the page into the stable tree,
+       ** we will have 2 virtual addresses that are pointing
+       ** to a ksm page left outside the stable tree,
+       ** in which case we need to break_cow on both.
+       **/
       if (!stable_node) {
         break_cow(tree_rmap_item);
         break_cow(rmap_item);
@@ -1524,7 +1532,7 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
     }
   }
   end_move_to_stable = rdtsc();
-
+/*
   printk("--------");
   printk("page_stable_node %llu", end_page_stable_node - start_page_stable_node);
   printk("stable_tree_search %llu", end_stable_tree_search - start_stable_tree_search);
@@ -1534,6 +1542,7 @@ static void cmp_and_merge_page(struct page *page, struct rmap_item *rmap_item)
   printk("unstable_tree_search_insert %llu", end_unstable_tree_search_insert - start_unstable_tree_search_insert);
   printk("move_to_stable %llu", end_move_to_stable - start_move_to_stable);
   printk("--------");
+  */
 
 }
 
@@ -1713,15 +1722,29 @@ static void ksm_do_scan(unsigned int scan_npages)
 {
   struct rmap_item *rmap_item;
   struct page *uninitialized_var(page);
+  unsigned long long start_scan_get, end_scan_get;
+  unsigned long long start_cmp_merge, end_cmp_merge;
+  static unsigned long long static_scan_get=0, static_cmp_merge=0;
 
   while (scan_npages-- && likely(!freezing(current))) {
     cond_resched();
+    start_scan_get = rdtsc();//
     rmap_item = scan_get_next_rmap_item(&page);
+    end_scan_get = rdtsc();//
+    static_scan_get += end_scan_get - start_scan_get;
     if (!rmap_item)
       return;
+    start_cmp_merge = rdtsc();//
     cmp_and_merge_page(page, rmap_item);
     put_page(page);
+    end_cmp_merge  = rdtsc();//
+    static_cmp_merge += end_cmp_merge - start_cmp_merge;
+
   }
+  printk("----sharing %llu", ksm_pages_sharing);
+  printk("static_scan_get %llu", static_scan_get);
+  printk("static_cmp_merge %llu", static_cmp_merge);
+  printk("sum %llu", static_scan_get + static_cmp_merge);
 }
 
 static int ksmd_should_run(void)
