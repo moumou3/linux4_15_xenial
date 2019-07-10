@@ -1402,7 +1402,7 @@ void stable_tree_append(struct rmap_item *rmap_item,
   rmap_item->address |= STABLE_FLAG;
   hlist_add_head(&rmap_item->hlist, &stable_node->hlist);
 
-  printk(KERN_DEBUG "ksm_pages_ %d", ksm_pages_sharing);
+  //printk(KERN_DEBUG "ksm_pages_ %d", ksm_pages_sharing);
   if (rmap_item->hlist.next)
     ksm_pages_sharing++;
   else
