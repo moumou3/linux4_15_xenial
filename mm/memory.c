@@ -80,6 +80,7 @@
 #include <asm/pgtable.h>
 
 #include "internal.h"
+#include "mytrace.h"
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -744,6 +745,7 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 	 * Allow a burst of 60 reports, then keep quiet for that minute;
 	 * or allow a steady drip of one report per second.
 	 */
+	MY_PRINT_DEBUG(0,0,0);
 	if (nr_shown == 60) {
 		if (time_before(jiffies, resume)) {
 			nr_unshown++;
@@ -828,6 +830,9 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 #else
 # define HAVE_PTE_SPECIAL 0
 #endif
+
+
+extern struct vm_area_struct *exugpud_vma;
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 			     pte_t pte, bool with_public_device)
 {
@@ -863,6 +868,9 @@ struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 					return page;
 				return NULL;
 			}
+		}
+		if (vma->vm_mm == exugpud_vma->vm_mm) {
+		  return pfn_to_page(pfn);
 		}
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
@@ -1341,8 +1349,11 @@ again:
 			}
 			rss[mm_counter(page)]--;
 			page_remove_rmap(page, false);
-			if (unlikely(page_mapcount(page) < 0))
+			if (unlikely(page_mapcount(page) < 0)) {
+	                  MY_PRINT_DEBUG(PageCompound(page),atomic_read(&page->_mapcount),0);
+
 				print_bad_pte(vma, addr, ptent, page);
+			}
 			if (unlikely(__tlb_remove_page(tlb, page))) {
 				force_flush = 1;
 				addr += PAGE_SIZE;
