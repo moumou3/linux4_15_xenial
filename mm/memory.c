@@ -118,6 +118,23 @@ int randomize_va_space __read_mostly =
 					2;
 #endif
 
+unsigned long long remap1_start, remap1_end, remap1_sub;
+unsigned long long remap2_start, remap2_end, remap2_sub;
+unsigned long long remap3_start, remap3_end, remap3_sub;
+unsigned long long remap4_start, remap4_end, remap4_sub;
+
+static void exprfunc_print_rdtsc(void) {
+
+  remap1_sub = remap1_end - remap1_start; 
+  remap2_sub = remap2_end - remap2_start; 
+  remap3_sub = remap3_end - remap3_start; 
+  remap4_sub = remap4_end - remap4_start; 
+  printk("remap1: %llu\n", remap1_sub);
+  printk("remap2: %llu\n", remap2_sub);
+  printk("remap3: %llu\n", remap3_sub);
+  printk("remap4: %llu\n", remap4_sub);
+}
+
 static int __init disable_randmaps(char *s)
 {
 	randomize_va_space = 0;
@@ -2144,6 +2161,7 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 		if (err)
 			break;
 	} while (pgd++, addr = next, addr != end);
+ exprfunc_print_rdtsc();
 
 	if (err)
 		untrack_pfn(vma, remap_pfn, PAGE_ALIGN(size));

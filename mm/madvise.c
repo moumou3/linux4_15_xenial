@@ -16,6 +16,7 @@
 #include <linux/falloc.h>
 #include <linux/sched.h>
 #include <linux/ksm.h>
+#include <linux/expr.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/blkdev.h>
@@ -108,6 +109,21 @@ static long madvise_behavior(struct vm_area_struct *vma,
 	case MADV_UGPUD_SVM:
 	case MADV_UGPUD_FLAG:
 		error = ksm_madvise(vma, start, end, behavior, &new_flags);
+		if (error) {
+			/*
+			 * madvise() returns EAGAIN if kernel resources, such as
+			 * slab, are temporarily unavailable.
+			 */
+			if (error == -ENOMEM)
+				error = -EAGAIN;
+			goto out;
+		}
+		break;
+        case MADV_EXPR_INPUT:
+        case MADV_EXPR_OUTPUT:
+	case MADV_EXPR_FLAG:
+	case MADV_EXPR_RUN:
+		error = expr_madvise(vma, start, end, behavior, &new_flags);
 		if (error) {
 			/*
 			 * madvise() returns EAGAIN if kernel resources, such as
@@ -713,6 +729,10 @@ madvise_behavior_valid(int behavior)
 	case MADV_UGPUD_SVM:
 	case MADV_UGPUD_FLAG:
 #endif
+	case MADV_EXPR_FLAG:
+	case MADV_EXPR_INPUT:
+	case MADV_EXPR_OUTPUT:
+	case MADV_EXPR_RUN:
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	case MADV_HUGEPAGE:
 	case MADV_NOHUGEPAGE:

@@ -24,6 +24,7 @@
 #include <linux/xxhash.h>
 #include <linux/expr.h>
 
+#include <linux/time.h>
 #include <asm/tlbflush.h>
 #include "internal.h"
 #include "mytrace.h"
@@ -51,6 +52,19 @@ unsigned long long remap_start, remap_end, remap_sub;
 unsigned long long daemon_start, daemon_end, daemon_sub;
 unsigned long long clear_start, clear_end, clear_sub;
 unsigned long long memsettest_start, memsettest_end, memsettest_sub;
+struct timeval memset_tvstart, memset_tvend, memset_tvsub;
+
+static inline void tvsub(struct timeval *x,
+                         struct timeval *y,
+                         struct timeval *ret)
+{
+  ret->tv_sec = x->tv_sec - y->tv_sec;
+  ret->tv_usec = x->tv_usec - y->tv_usec;
+  if (ret->tv_usec < 0) {
+    ret->tv_sec--;
+    ret->tv_usec += 1000000;
+  }
+}
 
 int check_page_zero(struct page *page) {
   char *addr;
@@ -72,9 +86,12 @@ void memset_to_pages(struct page *pages, int pagenum) {
   char *addr;
   int i;
   for (i = 0; i < pagenum; ++i) {
+    /*
     addr = kmap_atomic(&pages[i]);
     memset(addr,0x0, PAGE_SIZE); 
     kunmap_atomic(addr);
+    */
+    clear_page(&pages[i]);
   }
 
 }
@@ -87,12 +104,15 @@ void exprfunc_print_rdtsc(void) {
   daemon_sub = daemon_end - daemon_start; 
   clear_sub = clear_end - clear_start; 
   memsettest_sub = memsettest_end - memsettest_start; 
+  tvsub(&memset_tvend, &memset_tvstart, &memset_tvsub);
+  unsigned long tv_sub_usec = memset_tvsub.tv_sec * 1000000 + memset_tvsub.tv_usec;
   printk("allexpr: %llu\n", allexpr_sub);
   printk("flush: %llu\n", flush_sub);
   printk("remap: %llu\n", remap_sub);
   printk("daemon: %llu\n", daemon_sub);
   printk("clear: %llu\n", clear_sub);
   printk("memsettest: %llu\n", memsettest_sub);
+  printk("memsettest_tv: %lu\n", tv_sub_usec);
 }
 
 
@@ -110,16 +130,18 @@ void expr_funcion(void) {
 
   printk("expr_function called");
   expr_pagenum = *mapped_pagenum;
-  pageorder = get_order(expr_pagenum);
   malloc_size = expr_pagenum * PAGE_SIZE;
+  pageorder = get_order(malloc_size);
 #ifdef ALLOC_PAGES
   expr_pages = alloc_pages(GFP_KERNEL, pageorder);
-  printk("pageorder %d\n", pageorder);
-  return;
+  /*
   memsettest_start = rdtsc(); //memsettest_start
+  do_gettimeofday(&memset_tvstart);
   memset_to_pages(expr_pages, expr_pagenum);
+  do_gettimeofday(&memset_tvend);
   memsettest_end = rdtsc(); //memsettest_end;
   exprfunc_print_rdtsc();
+  */
 #else
 
   if ((kmalloc_ptr = kmalloc(malloc_size + PAGE_SIZE, GFP_KERNEL)) == NULL) {
@@ -167,24 +189,35 @@ void expr_funcion(void) {
 
   clear_start = rdtsc(); //clear_start
   for (i = 0; i < expr_pagenum; ++i) {
-    struct page* tmp_page = virt_to_page(addr_head + i * PAGE_SIZE);
+    struct page* tmp_page;
+#ifdef ALLOC_PAGES
+    tmp_page = &expr_pages[expr_pagenum];
+#else
+    tmp_page = virt_to_page(addr_head + i * PAGE_SIZE);
+#endif
     ClearPageReserved(tmp_page);
   }
   clear_end = rdtsc(); //clear_end;
   allexpr_end = rdtsc(); //allexpr_end
 
-  /*
+#ifndef ALLOC_PAGES
   memsettest_start = rdtsc(); //memsettest_start
   memset(memset_test_ptr, 0x0, malloc_size);
   memsettest_end = rdtsc(); //memsettest_end;
-  */
+#endif
 
   exprfunc_print_rdtsc();
+#ifdef ALLOC_PAGES
+  if (check_page_zero(expr_pages))
+    printk("page zero ok");
+  __free_pages(expr_pages, pageorder);
+#else
   if(!addr_head[0])
     printk("page zero ok");
-  printk("expr_funcion end");
   kfree(kmalloc_ptr);
   kfree(memset_test_ptr);
+#endif
+  printk("expr_funcion end");
 }
 
 static int exprd_should_run(void)
