@@ -3,6 +3,7 @@
 #include <linux/fs.h>
 #include <linux/mman.h>
 #include <linux/sched.h>
+#include <linux/hugetlb.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/coredump.h>
 #include <linux/rwsem.h>
@@ -52,6 +53,7 @@ unsigned long long remap_start, remap_end, remap_sub;
 unsigned long long daemon_start, daemon_end, daemon_sub;
 unsigned long long clear_start, clear_end, clear_sub;
 unsigned long long memsettest_start, memsettest_end, memsettest_sub;
+unsigned long long remap_huge_start, remap_huge_end, remap_huge_sub;
 struct timeval memset_tvstart, memset_tvend, memset_tvsub;
 
 static inline void tvsub(struct timeval *x,
@@ -252,6 +254,52 @@ int expr_scan_thread(void *nothing)
   return 0;
 }
 
+
+pmd_t *my_huge_pte_offset(struct mm_struct *mm,
+                       unsigned long addr)
+{
+  pgd_t *pgd;
+  p4d_t *p4d;
+  pud_t *pud;
+  pmd_t *pmd;
+
+  pgd = pgd_offset(mm, addr);
+  if (!pgd_present(*pgd))
+    return NULL;
+  p4d = p4d_offset(pgd, addr);
+  if (!p4d_present(*p4d))
+    return NULL;
+
+  pud = pud_offset(p4d, addr);
+
+  pmd = pmd_offset(pud, addr);
+  /* hugepage or swap? */
+  if (pmd_huge(*pmd) || !pmd_present(*pmd))
+    return pmd;
+
+  return NULL;
+}
+void function_for_hugetest(struct mm_struct *mm, unsigned long address) 
+{
+  pte_t *ptep, entry;
+  pmd_t *pmd1;
+  pmd_t *pmd2;
+  //ptep = my_huge_pte_offset(mm, address);
+  //entry = huge_ptep_get(ptep); //target entry
+  remap_huge_start = rdtsc(); //huge_start;
+
+  pmd1 = my_huge_pte_offset(mm, address); //target pmd
+  pmd2 = my_huge_pte_offset(mm, address); //gpu process pmd
+  set_pmd_at(mm, address, pmd2, *pmd1);
+
+  remap_huge_end = rdtsc(); //huge_end;
+
+  remap_huge_sub = remap_huge_end - remap_huge_start; 
+  printk("remap_huge: %llu\n", remap_huge_sub);
+
+
+}
+
 int expr_madvise(struct vm_area_struct *vma, unsigned long start,
                 unsigned long end, int advice, unsigned long *vm_flags)
 {
@@ -314,8 +362,11 @@ int expr_madvise(struct vm_area_struct *vma, unsigned long start,
       break;
     case MADV_EXPR_RUN:
       printk("MADV_EXPR_RUN");
+      function_for_hugetest(mm, start);
+      /*
       run_flag = 1;
       wake_up_interruptible(&expr_thread_wait);
+      */
   }
 
   return 0;
