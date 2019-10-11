@@ -718,14 +718,17 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 	pgd = pgd_offset(mm, address);
 	if (!pgd_present(*pgd))
 		goto out;
+	printk("pgd_offset %x\n", *pgd);
 
 	p4d = p4d_offset(pgd, address);
 	if (!p4d_present(*p4d))
 		goto out;
+	printk("p4d %x\n", *p4d);
 
 	pud = pud_offset(p4d, address);
 	if (!pud_present(*pud))
 		goto out;
+	printk("pud %x\n", *pud);
 
 	pmd = pmd_offset(pud, address);
 	/*
@@ -735,6 +738,7 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 	 */
 	pmde = *pmd;
 	barrier();
+	printk("pmd %x %x %x %x\n", pmd_present(pmde), pmd_trans_huge(pmde), *pmd, pmd);
 	if (!pmd_present(pmde) || pmd_trans_huge(pmde))
 		pmd = NULL;
 out:

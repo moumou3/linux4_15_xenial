@@ -34,8 +34,12 @@
 #define GPU_CALCEND 0x2
 #define ALLOC_PAGES 1
 
+#define HUGE_SIZE 2 * 1024 * 1024
+
 /*exugpud mm */
 struct vm_area_struct *exugpud_vma;
+struct vm_area_struct *hugeapp_vma;
+unsigned int hugesize;
 EXPORT_SYMBOL(exugpud_vma);
 static unsigned char *exugpud_flag = NULL;
 static unsigned int *exugpud_out;
@@ -116,6 +120,97 @@ void exprfunc_print_rdtsc(void) {
   printk("memsettest: %llu\n", memsettest_sub);
   printk("memsettest_tv: %lu\n", tv_sub_usec);
 }
+
+pmd_t *my_huge_pte_offset(struct mm_struct *mm,
+                       unsigned long addr)
+{
+  pgd_t *pgd;
+  p4d_t *p4d;
+  pud_t *pud;
+  pmd_t *pmd;
+
+  pgd = pgd_offset(mm, addr);
+  if (!pgd_present(*pgd))
+    return NULL;
+  p4d = p4d_offset(pgd, addr);
+  if (!p4d_present(*p4d))
+    return NULL;
+
+  pud = pud_offset(p4d, addr);
+
+  pmd = pmd_offset(pud, addr);
+
+  /* hugepage or swap? */
+  if (pmd_huge(*pmd) || !pmd_present(*pmd))
+    return pmd;
+
+  return NULL;
+}
+
+void huge_remap(void) 
+{
+  pte_t *ptep, entry;
+  pmd_t *pmd1;
+  pmd_t *pmd2;
+  struct mm_struct *mm_ugpud = exugpud_vma->vm_mm;
+  struct mm_struct *mm_hugeapp = hugeapp_vma->vm_mm;
+  unsigned long gpud_address = exugpud_vma->vm_start;
+  unsigned long long hugeapp_address = hugeapp_vma->vm_start;
+
+  unsigned char* huge_ptr = (unsigned char*)hugeapp_address;
+
+//  remap_huge_start = rdtsc(); //huge_start;
+
+  pmd1 = my_huge_pte_offset(mm_hugeapp, hugeapp_address); //target hugeapp pmd
+  pmd2 = my_huge_pte_offset(mm_ugpud, gpud_address); //gpu process pmd
+  set_pmd_at(mm_ugpud, gpud_address, pmd2, *pmd1);
+
+//  remap_huge_end = rdtsc(); //huge_end;
+
+//  remap_huge_sub = remap_huge_end - remap_huge_start; 
+//  printk("remap_huge: %llu\n", remap_huge_sub);
+
+
+
+}
+
+void expr_funcion_huge(void) {
+  void* expr_memory;
+  struct page *expr_pages;
+  unsigned int expr_pagenum;
+  int i;
+  unsigned long long hugeapp_address;
+  char* expr_addr;
+  unsigned char *addr_head;
+  size_t malloc_size;
+  int pageorder;
+
+  printk("expr_function_huge called\n");
+    expr_pagenum = *mapped_pagenum;
+  malloc_size = expr_pagenum * HUGE_SIZE;
+
+  hugeapp_address = hugeapp_vma->vm_start;
+
+     allexpr_start = rdtsc(); //allexpr_start
+      remap_start = rdtsc(); //remap_start
+  huge_remap();
+      remap_end = rdtsc(); //remap_end
+  *exugpud_flag = GPU_LAUNCH;
+
+      daemon_start = rdtsc(); //daemon_start
+  while(*exugpud_flag != GPU_CALCEND) {
+    yield();
+  }
+      daemon_end = rdtsc(); //daemon_end;
+
+      allexpr_end = rdtsc(); //allexpr_end
+
+
+  exprfunc_print_rdtsc();
+  printk("expr_funcion end\n");
+}
+
+
 
 
 void expr_funcion(void) {
@@ -236,7 +331,7 @@ int expr_scan_thread(void *nothing)
   while (!kthread_should_stop()) {
     mutex_lock(&expr_thread_mutex);
     if (exprd_should_run()) {
-      expr_funcion();
+      expr_funcion_huge();
       run_flag = 0;
     }
     mutex_unlock(&expr_thread_mutex);
@@ -255,50 +350,6 @@ int expr_scan_thread(void *nothing)
 }
 
 
-pmd_t *my_huge_pte_offset(struct mm_struct *mm,
-                       unsigned long addr)
-{
-  pgd_t *pgd;
-  p4d_t *p4d;
-  pud_t *pud;
-  pmd_t *pmd;
-
-  pgd = pgd_offset(mm, addr);
-  if (!pgd_present(*pgd))
-    return NULL;
-  p4d = p4d_offset(pgd, addr);
-  if (!p4d_present(*p4d))
-    return NULL;
-
-  pud = pud_offset(p4d, addr);
-
-  pmd = pmd_offset(pud, addr);
-  /* hugepage or swap? */
-  if (pmd_huge(*pmd) || !pmd_present(*pmd))
-    return pmd;
-
-  return NULL;
-}
-void function_for_hugetest(struct mm_struct *mm, unsigned long address) 
-{
-  pte_t *ptep, entry;
-  pmd_t *pmd1;
-  pmd_t *pmd2;
-  //ptep = my_huge_pte_offset(mm, address);
-  //entry = huge_ptep_get(ptep); //target entry
-  remap_huge_start = rdtsc(); //huge_start;
-
-  pmd1 = my_huge_pte_offset(mm, address); //target pmd
-  pmd2 = my_huge_pte_offset(mm, address); //gpu process pmd
-  set_pmd_at(mm, address, pmd2, *pmd1);
-
-  remap_huge_end = rdtsc(); //huge_end;
-
-  remap_huge_sub = remap_huge_end - remap_huge_start; 
-  printk("remap_huge: %llu\n", remap_huge_sub);
-
-
-}
 
 int expr_madvise(struct vm_area_struct *vma, unsigned long start,
                 unsigned long end, int advice, unsigned long *vm_flags)
@@ -362,11 +413,10 @@ int expr_madvise(struct vm_area_struct *vma, unsigned long start,
       break;
     case MADV_EXPR_RUN:
       printk("MADV_EXPR_RUN");
-      function_for_hugetest(mm, start);
-      /*
+      hugeapp_vma = vma;
+      hugesize = end - start;
       run_flag = 1;
       wake_up_interruptible(&expr_thread_wait);
-      */
   }
 
   return 0;
