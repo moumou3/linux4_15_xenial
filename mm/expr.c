@@ -38,10 +38,11 @@
 
 /*exugpud mm */
 struct vm_area_struct *exugpud_vma;
+EXPORT_SYMBOL(exugpud_vma);
 struct vm_area_struct *hugeapp_vma;
 unsigned int hugesize;
-EXPORT_SYMBOL(exugpud_vma);
-static unsigned char *exugpud_flag = NULL;
+unsigned char *exugpud_flag = NULL;
+EXPORT_SYMBOL(exugpud_flag);
 static unsigned int *exugpud_out;
 static unsigned int *mapped_pagenum = NULL;
 static int run_flag = 0;
@@ -409,6 +410,7 @@ int expr_madvise(struct vm_area_struct *vma, unsigned long start,
       exugpud_flag = (unsigned char*)kmalloc_area;
       mapped_pagenum = (unsigned int*)(kmalloc_area + sizeof(unsigned char));
       *exugpud_flag = 0x0;
+  printk("myhuge3 %lx, %lx\n", mapped_pagenum, virt_to_phys(mapped_pagenum));
       err = remap_pfn_range(vma, vma->vm_start, virt_to_phys((void *)kmalloc_area)>>PAGE_SHIFT, PAGE_SIZE, vma->vm_page_prot);
       break;
     case MADV_EXPR_RUN:

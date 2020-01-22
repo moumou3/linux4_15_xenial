@@ -4104,6 +4104,7 @@ static int __handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 	if (!vmf.pmd)
 		return VM_FAULT_OOM;
 	if (pmd_none(*vmf.pmd) && transparent_hugepage_enabled(vma)) {
+	        printk("create_huge_pmd!\n");
 		ret = create_huge_pmd(&vmf);
 		if (!(ret & VM_FAULT_FALLBACK))
 			return ret;

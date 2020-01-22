@@ -36,6 +36,13 @@
 #include <linux/node.h>
 #include <linux/userfaultfd_k.h>
 #include "internal.h"
+#include "mytrace.h"
+#include <linux/time.h>
+
+#define GPU_LAUNCH 0x1
+#define GPU_CALCEND 0x2
+
+unsigned long long clearpage_start, clearpage_end, clearpage_sub;
 
 int hugepages_treat_as_movable;
 
@@ -71,6 +78,8 @@ struct mutex *hugetlb_fault_mutex_table ____cacheline_aligned_in_smp;
 
 /* Forward declaration */
 static int hugetlb_acct_memory(struct hstate *h, long delta);
+extern struct vm_area_struct *exugpud_vma;
+extern unsigned char *exugpud_flag;
 
 static inline void unlock_or_release_subpool(struct hugepage_subpool *spool)
 {
@@ -3655,6 +3664,71 @@ int huge_add_to_page_cache(struct page *page, struct address_space *mapping,
 	return 0;
 }
 
+// warning same function in expr.c !! 
+pmd_t *my_huge_pte_offset2(struct mm_struct *mm,
+                       unsigned long addr)
+{
+  pgd_t *pgd;
+  p4d_t *p4d;
+  pud_t *pud;
+  pmd_t *pmd;
+
+  pgd = pgd_offset(mm, addr);
+  if (!pgd_present(*pgd))
+    return NULL;
+  p4d = p4d_offset(pgd, addr);
+  if (!p4d_present(*p4d))
+    return NULL;
+
+  pud = pud_offset(p4d, addr);
+
+  pmd = pmd_offset(pud, addr);
+
+  /* hugepage or swap? */
+  if (pmd_huge(*pmd) || !pmd_present(*pmd))
+    return pmd;
+
+  return NULL;
+}
+static void gpu_clear_huge_page(struct mm_struct* mm_hugeapp, struct vm_area_struct *hugeapp_vma, struct page* page,  unsigned long addr_hint, unsigned int pages_per_huge_page)
+{
+  void* expr_memory;
+  struct page *expr_pages;
+  unsigned int expr_pagenum;
+  int i;
+  unsigned long long hugeapp_address;
+  char* expr_addr;
+  unsigned char *addr_head;
+  size_t malloc_size;
+  int pageorder;
+
+  pmd_t *pmd1;
+  pmd_t *pmd2;
+
+
+
+
+  pmd1 = my_huge_pte_offset2(mm_hugeapp, hugeapp_vma->vm_start); //target hugeapp pmd
+  pmd2 = my_huge_pte_offset2(exugpud_vma->vm_mm, exugpud_vma->vm_start); //gpu process pmd
+  set_pmd_at(exugpud_vma->vm_mm, exugpud_vma->vm_start, pmd2, *pmd1);
+
+
+  *exugpud_flag = GPU_LAUNCH;
+
+  while(*exugpud_flag != GPU_CALCEND) {
+    yield();
+  }
+
+
+
+
+
+
+
+
+
+
+}
 static int hugetlb_no_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			   struct address_space *mapping, pgoff_t idx,
 			   unsigned long address, pte_t *ptep, unsigned int flags)
@@ -3672,6 +3746,7 @@ static int hugetlb_no_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * original mapper has unmapped pages from the child due to a failed
 	 * COW. Warn that such a situation has occurred as it may not be obvious
 	 */
+	//printk("hugetlb_no_page\n");
 	if (is_vma_resv_set(vma, HPAGE_RESV_UNMAPPED)) {
 		pr_warn_ratelimited("PID %d killed due to inadequate hugepage pool\n",
 			   current->pid);
@@ -3729,7 +3804,19 @@ retry:
 				ret = VM_FAULT_SIGBUS;
 			goto out;
 		}
-		clear_huge_page(page, address, pages_per_huge_page(h));
+		//printk("clear_page!\n");
+		
+
+                clearpage_start = rdtsc();
+
+		if (vma != exugpud_vma) {
+		  //gpu_clear_huge_page(mm, vma, page, address, pages_per_huge_page(h));
+		  clear_huge_page(page, address, pages_per_huge_page(h));
+		}
+		else 
+		  //clear_huge_page(page, address, pages_per_huge_page(h));
+                clearpage_end = rdtsc();
+		//printk("clear_page aaa! %llu\n", clearpage_end - clearpage_start);
 		__SetPageUptodate(page);
 		set_page_huge_active(page);
 
